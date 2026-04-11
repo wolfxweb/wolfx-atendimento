@@ -470,6 +470,390 @@ Resposta:
 
 ---
 
+## Telas / UI
+
+### Visão Geral das Telas
+
+| Tela | Roles | Descrição |
+|------|-------|-----------|
+| Login | Público | Autenticação |
+| Registo | Público | Criar Customer + User |
+| Dashboard | Todos | Visão geral + stats |
+| Tickets Lista | Todos | Listar + filtrar tickets |
+| Ticket Detalhe | Todos | Ver + responder ticket |
+| Novo Ticket | Customer | Criar ticket |
+| Produtos Lista | Customer, Agent | Listar produtos |
+| Produto Detalhe | Customer, Agent | Ver + editar produto |
+| Categorias | Admin | Gerir categorias |
+| Clientes | Admin, Agent | Gerir customers |
+| SLA Dashboard | Agent+ | Ver status SLA |
+| Configurações | Admin | Configurações gerais |
+| Utilizadores | Admin | Gerir staff |
+
+---
+
+## Telas Detalhadas
+
+### 1. Login
+
+| Campo | Tipo | Placeholder |
+|-------|------|-------------|
+| email | input email | "seu@email.com" |
+| password | input password | "••••••••" |
+
+**Botões:**
+- [Entrar] - submit
+- [Criar conta] - link para Registo
+
+**Validações:**
+- Email obrigatório e válido
+- Password obrigatório (min 6 chars)
+
+---
+
+### 2. Registo (Criar Conta)
+
+| Campo | Tipo | Obrigatório |
+|-------|------|-------------|
+| Nome da Empresa | input text | Sim |
+| CNPJ/CPF | input text | Não |
+| Email | input email | Sim |
+| Telefone | input tel | Não |
+| Seu Nome | input text | Sim |
+| Sua Senha | input password | Sim |
+| Confirmar Senha | input password | Sim |
+
+**Botões:**
+- [Criar Conta] - submit
+
+**Validações:**
+- Email único no sistema
+- Senha min 6 chars
+- Senhas devem coincidir
+
+---
+
+### 3. Dashboard
+
+**Cards de Estatísticas (top):**
+
+| Card | Descrição |
+|------|-----------|
+| Total de Tickets | Count de todos os tickets |
+| Abertos | Count status=open |
+| Pendentes | Count status=pending |
+| Resolvidos | Count status=solved |
+| Dentro do SLA | Count sla_status=within |
+| Em Risco | Count sla_status=at_risk |
+| Violados | Count sla_status=breached |
+
+**Gráficos:**
+- Tickets por Status (barras)
+- Tickets por Prioridade (barras)
+- Tickets por Categoria (pizza)
+- Evolução de Tickets (linha - últimos 7 dias)
+
+**Lista de Tickets Recentes (últimos 10)**
+
+---
+
+### 4. Lista de Tickets
+
+**Filtros (sidebar ou top bar):**
+
+| Filtro | Tipo | Valores |
+|--------|------|---------|
+| Pesquisar | text | Busca em title, description |
+| Status | select multi | open, pending, solved, closed, reopened |
+| Prioridade | select multi | low, normal, high, urgent |
+| Categoria | select | Lista de categorias |
+| Cliente | select | Lista de customers (Agent+可见) |
+| Agente | select | Lista de agents |
+| Produto | select | Lista de produtos do customer |
+| SLA Status | select multi | within, at_risk, breached |
+| Data de Criação | date range | from - to |
+| Tags | select multi | Lista de tags |
+
+**Colunas da Lista:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| ID | #ticket_id (curto) |
+| Título | Título do ticket |
+| Cliente | Nome do customer |
+| Status | Badge colorido |
+| Prioridade | Badge colorido |
+| Categoria | Badge com cor |
+| Agente | Nome do agent atribuido |
+| SLA | Indicador colored |
+| Criado | Data relativa (há 2h) |
+
+**Ações por linha:**
+- Ver detalhes (click na linha)
+- Atribuir agente (Agent+)
+- Mudar status (Agent+)
+
+**Paginação:** 20 por página, sortable por data/criado
+
+---
+
+### 5. Detalhe do Ticket
+
+**Header:**
+- ID + Título
+- Status badge
+- Prioridade badge
+- SLA status badge
+- Cliente (nome + empresa)
+- Criado em (data completa)
+
+**Tabs:**
+- Detalhes | Comentários | Histórico | Ficheiros
+
+**Tab Detalhes:**
+
+| Campo | Valor |
+|-------|-------|
+| Descrição | Texto completo |
+| Categoria | Badge |
+| Produto Associado | Link para produto |
+| Fotos | Grid de thumbnails |
+| Tags | Badges |
+| Agente Atribuído | Nome ou "Não atribuido" |
+| Resumo Resolução | Texto (se resolvido) |
+
+**Tab Comentários:**
+- Lista de comentários (mais antigo primeiro)
+- Comentário novo (form)
+
+**Form Novo Comentário (Agent+):**
+| Campo | Tipo |
+|-------|------|
+| Texto | textarea |
+| Visibilidade | radio: Público / Interno |
+| Ficheiros | upload multiple |
+
+**Botões de Ação (Agent+):**
+- [Atribuir a Mim]
+- [Mudar Prioridade] → dropdown
+- [Mudar Status] → dropdown
+- [Resolver Ticket] → abre modal
+
+**Modal Resolver Ticket:**
+| Campo | Tipo | Obrigatório |
+|-------|------|-------------|
+| Resumo da Resolução | textarea | Sim |
+| Notificar Cliente | checkbox | Sim (default) |
+
+---
+
+### 6. Novo Ticket (Customer)
+
+**Form:**
+
+| Campo | Tipo | Obrigatório |
+|-------|------|-------------|
+| Título | input text (200) | Sim |
+| Descrição | textarea | Sim |
+| Prioridade | select | Sim (default: normal) |
+| Categoria | select | Não |
+| Produto | select | Não |
+| Fotos | file upload (max 10) | Não |
+
+**Preview das fotos uploadadas (thumbnails com X para remover)**
+
+**Botões:**
+- [Cancelar] - volta para lista
+- [Criar Ticket] - submit
+
+---
+
+### 7. Lista de Produtos (Customer)
+
+**Filtros:**
+
+| Filtro | Tipo |
+|--------|------|
+| Pesquisar | text (name, sku) |
+| Categoria | select |
+
+**Colunas:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| SKU | Código do produto |
+| Nome | Nome |
+| Categoria | Badge colorido |
+| Preço | Formatado (EUR) |
+| Fotos | Thumbnail count |
+| Tickets | Count de tickets associados |
+| Ações | Editar, Ver |
+
+---
+
+### 8. Detalhe do Produto (Customer)
+
+**Header:**
+- Nome
+- SKU
+- Badge Categoria
+
+**Info:**
+| Campo | Descrição |
+|-------|-----------|
+| Descrição | Texto |
+| Preço | Formatado |
+| Categoria | Badge |
+| Fotos | Grid de imagens |
+| Data de Criação | Completa |
+
+**Botões:**
+- [Editar Produto]
+- [Ver Tickets do Produto] → lista filtrada
+
+---
+
+### 9. Gerir Categorias (Admin)
+
+**Lista de Categorias:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| Cor | Circle colored |
+| Nome | Nome |
+| Slug | Texto |
+| Tipo | Badge: Product / Ticket |
+| Ícone | Icone |
+| Tickets/Produtos | Count |
+| Ativo | Toggle |
+| Ações | Editar, Apagar |
+
+**Modal/Form Criar/Editar Categoria:**
+
+| Campo | Tipo | Obrigatório |
+|-------|------|-------------|
+| Nome | input text | Sim |
+| Slug | input text (auto) | Sim |
+| Tipo | radio: Product / Ticket | Sim |
+| Descrição | textarea | Não |
+| Cor | color picker | Sim |
+| Ícone | select | Não |
+| Ordem | number | Não |
+
+---
+
+### 10. SLA Dashboard (Agent+)
+
+**Cards Top:**
+
+| Card | Count | Cor |
+|------|-------|-----|
+| Dentro do SLA | X | verde |
+| Em Risco | X | amarelo |
+| Violados | X | vermelho |
+
+**Filtros:**
+- Período: Hoje, Esta Semana, Este Mês, Todos
+- Prioridade: Todas, Low, Normal, High, Urgent
+
+**Tabela Tickets SLA:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| ID | #ticket |
+| Título | truncado |
+| Cliente | Nome |
+| Prioridade | Badge |
+| Tempo Restante | "2h 30m" ou "Violado há 1h" |
+| Status | Badge |
+| Agent | Nome |
+
+**Gráfico:**
+- Timeline de SLAs (barras horizontais mostrando tempo restante)
+
+---
+
+### 11. Clientes / Empresas (Admin/Agent)
+
+**Filtros:**
+
+| Filtro | Tipo |
+|--------|------|
+| Pesquisar | text (name, document) |
+| Ativo | select: Todos, Ativos, Inativos |
+
+**Colunas:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| Nome | Nome da empresa |
+| CNPJ | Documento |
+| Email | Email contacto |
+| Telefone | Telefone |
+| Tickets | Count total |
+| Abertos | Count status=open |
+| Utilizadores | Count users |
+| Criado em | Data |
+| Ações | Ver, Editar |
+
+---
+
+### 12. Utilizadores / Staff (Admin)
+
+**Lista de Utilizadores (staff - agents + admins):**
+
+| Filtro | Tipo |
+|--------|------|
+| Pesquisar | text (name, email) |
+| Role | select: Todos, Admin, Agent |
+| Status | select: Todos, Ativo, Inativo |
+
+**Colunas:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| Avatar | Initials |
+| Nome | Nome |
+| Email | Email |
+| Role | Badge: Admin / Agent |
+| Team | Nome ou "-" |
+| Status | Badge: available, away, offline |
+| Tickets | Count atribuições |
+| Ações | Editar, Desativar |
+
+---
+
+## Componentes UI Reutilizáveis
+
+### Badge de Status
+
+| Status | Cor | Background | Texto |
+|--------|-----|------------|-------|
+| open | blue | #EBF5FF | #1D4ED8 |
+| pending | yellow | #FEF9C3 | #854D0E |
+| solved | green | #DCFCE7 | #166534 |
+| closed | gray | #F3F4F6 | #374151 |
+| reopened | orange | #FFEDD5 | #9A3412 |
+
+### Badge de Prioridade
+
+| Prioridade | Cor |
+|------------|-----|
+| low | gray |
+| normal | blue |
+| high | orange |
+| urgent | red |
+
+### Badge de SLA
+
+| SLA | Cor |
+|-----|-----|
+| within | green |
+| at_risk | yellow |
+| breached | red |
+
+---
+
 ## Issues / Tasks
 
 | # | Task | Milestone | Status |
