@@ -83,9 +83,10 @@ Entidade que representa uma empresa/cliente. Todos os Users, Products e Tickets 
 | email | String(255) | Email de contacto |
 | address | Text | Endereço (opcional) |
 | is_active | Boolean | Default True |
-| **sla_id** | UUID | FK → CustomerSLA, nullable (herda do global se null) |
 | created_at | DateTime | Auto |
 | updated_at | DateTime | Auto |
+
+**Nota:** O SLA do cliente é encontrado pelo `SLA.customer_id`. Se não existir SLA para esse customer, usa o SLA global (is_default=True).
 
 ### User
 
@@ -213,13 +214,16 @@ Categorias para organizar Products e Tickets.
 | comment | Text | Opcional (obrigatório se rejected) |
 | created_at | DateTime | Auto |
 
-### SLAConfig (Global - Default do Sistema)
+### SLA
+
+Um único modelo que pode ser global (sem customer) ou customizado (com customer_id).
 
 | Campo | Tipo | Validação |
 |-------|------|-----------|
 | id | UUID | PK |
+| customer_id | UUID | FK → Customer, nullable, unique (se cliente) |
 | name | String(100) | Not null |
-| priority | String(20) | Unique: `low`, `normal`, `high`, `urgent` |
+| priority | String(20) | `low`, `normal`, `high`, `urgent` |
 | first_response_minutes | Integer | Not null |
 | resolution_minutes | Integer | Not null |
 | business_hours_only | Boolean | Default True |
@@ -227,28 +231,15 @@ Categorias para organizar Products e Tickets.
 | business_end_hour | Integer | Default 18 |
 | business_days | JSON | Default [1,2,3,4,5] |
 | is_active | Boolean | Default True |
-
-### CustomerSLA (SLAs Personalizados por Cliente)
-
-Cada cliente pode ter seus próprios SLAs ou herdar do global.
-
-| Campo | Tipo | Validação |
-|-------|------|-----------|
-| id | UUID | PK |
-| customer_id | UUID | FK → Customer, unique, not null |
-| name | String(100) | Not null |
-| priority | String(20) | Unique por customer: `low`, `normal`, `high`, `urgent` |
-| first_response_minutes | Integer | Not null |
-| resolution_minutes | Integer | Not null |
-| business_hours_only | Boolean | Default True |
-| business_start_hour | Integer | Default 9 |
-| business_end_hour | Integer | Default 18 |
-| business_days | JSON | Default [1,2,3,4,5] |
-| is_active | Boolean | Default True |
+| is_default | Boolean | Default False (SLA global é default) |
 | created_at | DateTime | Auto |
 | updated_at | DateTime | Auto |
 
-**Nota:** Se CustomerSLA não existir para um customer, o sistema usa SLAConfig global.
+**Funcionamento:**
+- `customer_id = NULL` → SLA global (default do sistema)
+- `customer_id = UUID` → SLA customizado desse cliente
+- Se cliente não tiver SLA custom, usa o global (is_default=True)
+- `is_default=True` identifica o SLA global
 
 ---
 
@@ -377,11 +368,13 @@ Cliente abre ticket
 
 | Método | Endpoint | Descrição | Auth |
 |--------|----------|-----------|------|
-| GET | /api/v1/sla/configs | Listar configs SLA globais | Agent+ |
-| PATCH | /api/v1/sla/configs/{priority} | Atualizar SLA global | Admin |
-| GET | /api/v1/sla/customers/{id} | Ver SLA do customer | Agent+ |
-| PUT | /api/v1/sla/customers/{id} | Criar/Atualizar SLA do customer | Admin |
-| DELETE | /api/v1/sla/customers/{id} | Remover SLA customizado (usa global) | Admin |
+| GET | /api/v1/sla | Listar SLAs (global + do cliente logado) | Agent+ |
+| POST | /api/v1/sla | Criar SLA customizado para cliente | Customer |
+| GET | /api/v1/sla/{id} | Ver SLA específico | Yes |
+| PATCH | /api/v1/sla/{id} | Editar SLA | Admin (global) / Owner (custom) |
+| DELETE | /api/v1/sla/{id} | Apagar SLA customizado | Admin |
+| GET | /api/v1/sla/global | Ver SLA global (default) | Agent+ |
+| PATCH | /api/v1/sla/global | Editar SLA global | Admin |
 | GET | /api/v1/sla/dashboard | Dashboard SLA | Agent+ |
 | GET | /api/v1/sla/tickets/at-risk | Tickets em risco | Agent+ |
 
@@ -898,28 +891,11 @@ Resposta:
 | CNPJ | Documento |
 | Email | Email contacto |
 | Telefone | Telefone |
-| SLA | Badge (Global ou nome do custom) |
 | Tickets | Count total |
 | Abertos | Count status=open |
 | Utilizadores | Count users |
 | Criado em | Data |
-| Ações | Ver, Editar, Config SLA |
-
-**Modal/Form Configurar SLA do Cliente:**
-
-| Campo | Tipo | Obrigatório |
-|-------|------|-------------|
-| Usar SLA | radio: Global / Customizado | Sim |
-| Nome do SLA | input text | Sim (se custom) |
-| First Response (Low) | number (minutos) | Sim |
-| First Response (Normal) | number (minutos) | Sim |
-| First Response (High) | number (minutos) | Sim |
-| First Response (Urgent) | number (minutos) | Sim |
-| Resolution (Low) | number (minutos) | Sim |
-| Resolution (Normal) | number (minutos) | Sim |
-| Resolution (High) | number (minutos) | Sim |
-| Resolution (Urgent) | number (minutos) | Sim |
-| Apenas Horas Úteis | checkbox | Sim (default) |
+| Ações | Ver, Editar |
 
 ---
 
