@@ -478,6 +478,7 @@ Resposta:
 |------|-------|-----------|
 | Login | Público | Autenticação |
 | Registo | Público | Criar Customer + User |
+| **Home (Customer)** | **Customer** | **Página inicial do cliente - mostra empresa** |
 | Dashboard | Todos | Visão geral + stats |
 | Tickets Lista | Todos | Listar + filtrar tickets |
 | Ticket Detalhe | Todos | Ver + responder ticket |
@@ -489,6 +490,8 @@ Resposta:
 | SLA Dashboard | Agent+ | Ver status SLA |
 | Configurações | Admin | Configurações gerais |
 | Utilizadores | Admin | Gerir staff |
+
+**Nota:** Todas as telas exceto Login e Registo requerem autenticação JWT.
 
 ---
 
@@ -533,7 +536,77 @@ Resposta:
 
 ---
 
-### 3. Dashboard
+### 3. Home do Cliente (Customer)
+
+**Página inicial após login para Customers. Mostra info da empresa e atalhos rápidos.**
+
+**Header:**
+- Logo + Nome da Empresa
+- Menu: Home | Tickets | Produtos | Definições
+- Botão: Novo Ticket
+- Avatar user: [Nome] ▼ (dropdown: Perfil, Sair)
+
+**Corpo:**
+
+| Secção | Conteúdo |
+|--------|----------|
+| Welcome | "Bem-vindo, [Nome do User]!" |
+| Empresa | Card com info da empresa |
+| Stats | 4 cards: Tickets Abertos, Produtos, Resolvidos, Em Atraso |
+| Atalhos | Botões: Novo Ticket, Ver Tickets, Meus Produtos |
+| Tickets Recentes | Lista últimos 5 tickets do customer |
+| Produtos Recentes | Lista últimos 6 produtos |
+
+**Card Info Empresa:**
+
+| Campo | Descrição |
+|-------|-----------|
+| Nome | Razão social |
+| CNPJ | Documento |
+| Email | Email contacto |
+| Telefone | Telefone |
+| Endereço | Morada |
+| Membro desde | Data de criação |
+
+**Stats Cards:**
+
+| Card | Ícone | Valor |
+|------|-------|-------|
+| Tickets Abertos | ticket | count |
+| Meus Produtos | package | count |
+| Resolvidos (este mês) | check-circle | count |
+| Em Atraso | alert-triangle | count |
+
+**ATALHOS - Botões grandes:**
+
+| Botão | Ícone | Link |
+|-------|-------|------|
+| Novo Ticket | plus-circle | → /tickets/new |
+| Ver Todos Tickets | list | → /tickets |
+| Meus Produtos | package | → /products |
+| Perfil | user | → /profile |
+
+**Lista Tickets Recentes:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| ID | #short |
+| Título | truncado |
+| Status | Badge |
+| Criado | Data relativa |
+
+**Lista Produtos Recentes:**
+
+| Coluna | Descrição |
+|--------|-----------|
+| Imagem | Thumbnail |
+| Nome | Nome |
+| SKU | Código |
+| Categoria | Badge |
+
+---
+
+### 4. Dashboard (Agent+/Admin)
 
 **Cards de Estatísticas (top):**
 
@@ -557,7 +630,7 @@ Resposta:
 
 ---
 
-### 4. Lista de Tickets
+### 5. Lista de Tickets
 
 **Filtros (sidebar ou top bar):**
 
@@ -597,7 +670,7 @@ Resposta:
 
 ---
 
-### 5. Detalhe do Ticket
+### 6. Detalhe do Ticket
 
 **Header:**
 - ID + Título
@@ -647,7 +720,7 @@ Resposta:
 
 ---
 
-### 6. Novo Ticket (Customer)
+### 7. Novo Ticket (Customer)
 
 **Form:**
 
@@ -668,7 +741,7 @@ Resposta:
 
 ---
 
-### 7. Lista de Produtos (Customer)
+### 8. Lista de Produtos (Customer)
 
 **Filtros:**
 
@@ -691,7 +764,7 @@ Resposta:
 
 ---
 
-### 8. Detalhe do Produto (Customer)
+### 9. Detalhe do Produto (Customer)
 
 **Header:**
 - Nome
@@ -713,7 +786,7 @@ Resposta:
 
 ---
 
-### 9. Gerir Categorias (Admin)
+### 10. Gerir Categorias (Admin)
 
 **Lista de Categorias:**
 
@@ -742,7 +815,7 @@ Resposta:
 
 ---
 
-### 10. SLA Dashboard (Agent+)
+### 11. SLA Dashboard (Agent+)
 
 **Cards Top:**
 
@@ -773,7 +846,7 @@ Resposta:
 
 ---
 
-### 11. Clientes / Empresas (Admin/Agent)
+### 12. Clientes / Empresas (Admin/Agent)
 
 **Filtros:**
 
@@ -798,7 +871,7 @@ Resposta:
 
 ---
 
-### 12. Utilizadores / Staff (Admin)
+### 13. Utilizadores / Staff (Admin)
 
 **Lista de Utilizadores (staff - agents + admins):**
 
