@@ -997,8 +997,125 @@ MAX_UPLOAD_SIZE=10485760  # 10MB
 
 ---
 
+## Deployment
+
+### Infraestrutura
+
+```
+VPS: Docker Swarm + Portainer + Traefik
+├── PostgreSQL: postgres_postgres.1 (port 5432)
+├── Database: atendimento_db (a criar)
+└── SSL: Let's Encrypt automático via Traefik
+```
+
+### Domínio
+
+| URL | Servicio | Porta |
+|-----|----------|-------|
+| https://atendimento.wolfx.com.br | Frontend (React) | 3000 |
+| https://atendimento.wolfx.com.br/api | Backend (FastAPI) | 8000 |
+
+### Traefik Labels
+
+```yaml
+traefik.enable: "true"
+traefik.http.routers.atendimento.rule: Host(`atendimento.wolfx.com.br`)
+traefik.http.routers.atendimento.entrypoints: websecure
+traefik.http.routers.atendimento.tls.certresolver: letsencryptresolver
+traefik.http.services.atendimento.loadbalancer.server.port: 8000
+```
+
+### Environment Variables
+
+```bash
+# Database
+DATABASE_URL=postgresql://postgres:{PASSWORD}@postgres_postgres.1.nna9eggrh1nvmhflrrbkxicu6:5432/atendimento_db
+
+# JWT
+SECRET_KEY=change-me-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# App
+APP_NAME=wolfx-atendimento
+DEBUG=false
+CORS_ORIGINS=https://atendimento.wolfx.com.br
+
+# Upload
+UPLOAD_DIR=/app/uploads
+MAX_UPLOAD_SIZE=10485760
+```
+
+### Docker Stack
+
+```yaml
+version: "3.8"
+services:
+  api:
+    image: wolfxweb/atendimento-api:latest
+    deploy:
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.atendimento.rule: Host(`atendimento.wolfx.com.br`)
+        traefik.http.routers.atendimento.entrypoints: websecure
+        traefik.http.routers.atendimento.tls.certresolver: letsencryptresolver
+        traefik.http.services.atendimento.loadbalancer.server.port: 8000
+    environment:
+      DATABASE_URL: postgresql://postgres:{PASS}@postgres_postgres.1:5432/atendimento_db
+      SECRET_KEY: {SECRET}
+    volumes:
+      - uploads_data:/app/uploads
+
+  frontend:
+    image: wolfxweb/atendimento-frontend:latest
+    deploy:
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.atendimento-front.rule: Host(`atendimento.wolfx.com.br`) && PathPrefix(`/`)
+        traefik.http.routers.atendimento-front.entrypoints: websecure
+        traefik.http.routers.atendimento-front.tls.certresolver: letsencryptresolver
+        traefik.http.services.atendimento-front.loadbalancer.server.port: 3000
+
+volumes:
+  uploads_data:
+```
+
+###seed Admin (criado na inicialização)
+
+```python
+# Super Admin do sistema
+{
+    "email": "admin@wolfx.com",
+    "password": "Admin@123",  # mudar em produção
+    "name": "Administrador",
+    "role": "admin"
+}
+```
+
+### Comandos Deploy
+
+```bash
+# Build e deploy
+docker build -t wolfxweb/atendimento-api:latest ./backend
+docker build -t wolfxweb/atendimento-frontend:latest ./frontend
+
+# Push para registry (se necessário)
+docker push wolfxweb/atendimento-api:latest
+docker push wolfxweb/atendimento-frontend:latest
+
+# Deploy no swarm
+docker stack deploy -c docker-compose.yml wolfx-atendimento
+
+# Ver logs
+docker service logs wolfx-atendimento_api -f
+docker service logs wolfx-atendimento_frontend -f
+```
+
+---
+
 ## Changelog
 
 | Data | Alteração |
 |------|-----------|
 | 2026-04-11 | Criado projeto e SPEC.md |
+| 2026-04-11 | Adicionado deployment (VPS + Docker Swarm + Traefik) |

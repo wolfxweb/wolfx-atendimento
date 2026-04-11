@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  api:
+    build: ./backend
+    image: wolfxweb/atendimento-api:latest
+    container_name: atendimento_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres_postgres.1.nna9eggrh1nvmhflrrbkxicu6:5432/atendimento_db
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DEBUG=false
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - server
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.atendimento.rule=Host(`atendimento.wolfx.com.br`)"
+        - "traefik.http.routers.atendimento.entrypoints=websecure"
+        - "traefik.http.routers.atendimento.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.atendimento.loadbalancer.server.port=8000"
+
+volumes:
+  uploads_data:
+    driver: local
+
+networks:
+  server:
+    external: true
