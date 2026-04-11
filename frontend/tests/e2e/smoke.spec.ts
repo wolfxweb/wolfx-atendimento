@@ -15,13 +15,17 @@ test('Login with valid credentials redirects to admin dashboard', async ({ page 
   await page.fill('input[type="password"]', 'Admin@123');
   await page.click('button[type="submit"]');
 
-  // Give time for React to process
-  await page.waitForTimeout(5000);
+  // Wait for redirect or auth state update
+  await page.waitForTimeout(3000);
 
-  // Check URL and page content
-  console.log('URL after login:', page.url());
-  const body = await page.locator('body').textContent();
-  console.log('Body:', body?.slice(0, 300));
+  // Verify auth token was set (proves login succeeded)
+  const token = await page.evaluate(() => localStorage.getItem('token'));
+  expect(token).toBeTruthy();
+
+  // Verify URL changed from /login (either /admin or intermediate)
+  const url = page.url();
+  expect(url).not.toBe(`${BASE}/login`);
+  console.log('URL after login:', url);
 });
 
 test('Login with invalid credentials shows error', async ({ page }) => {
