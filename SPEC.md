@@ -70,30 +70,47 @@ wolfx-atendimento/
 
 ## Modelos
 
-### User
+### Customer
+
+Entidade que representa uma empresa/cliente. Todos os Users, Products e Tickets pertencem a um Customer.
 
 | Campo | Tipo | Validação |
 |-------|------|-----------|
 | id | UUID | PK |
-| email | String(255) | Unique, not null, email |
-| password_hash | String(255) | BCrypt |
-| name | String(100) | Not null |
-| role | Enum | `admin`, `agent`, `customer` |
+| name | String(200) | Not null |
+| document | String(50) | CNPJ/CPF (opcional) |
+| phone | String(20) | Opcional |
+| email | String(255) | Email de contacto |
+| address | Text | Endereço (opcional) |
 | is_active | Boolean | Default True |
 | created_at | DateTime | Auto |
 | updated_at | DateTime | Auto |
 
-### Customer (User role=customer)
+### User
+
+Utilizadores pertencem a um Customer (empresa). Agents e Admins não pertencem a nenhum Customer.
 
 | Campo | Tipo | Validação |
 |-------|------|-----------|
+| id | UUID | PK |
+| customer_id | UUID | FK → Customer, nullable |
+| email | String(255) | Unique, not null, email |
+| password_hash | String(255) | BCrypt |
+| name | String(100) | Not null |
+| role | Enum | `admin`, `agent`, `customer` |
 | phone | String(20) | Opcional |
-| company | String(100) | Opcional |
+| is_active | Boolean | Default True |
+| created_at | DateTime | Auto |
+| updated_at | DateTime | Auto |
+
+**Nota:** Users com role=`customer` SEMPRE têm customer_id (pertencem a uma empresa).
+Users com role=`agent` ou `admin` têm customer_id=NULL (são staff).
 
 ### Agent (User role=agent)
 
 | Campo | Tipo | Validação |
 |-------|------|-----------|
+| user_id | UUID | FK → User, PK |
 | team | String(50) | Opcional |
 | status | Enum | `available`, `away`, `offline` |
 | max_tickets | Integer | Default 10 |
@@ -139,7 +156,7 @@ Categorias para organizar Products e Tickets.
 | Campo | Tipo | Validação |
 |-------|------|-----------|
 | id | UUID | PK |
-| customer_id | UUID | FK → User, not null |
+| customer_id | UUID | FK → Customer, not null |
 | category_id | UUID | FK → Category, nullable |
 | name | String(200) | Not null |
 | sku | String(50) | Unique, not null |
@@ -158,7 +175,8 @@ Categorias para organizar Products e Tickets.
 | description | Text | Not null |
 | status | Enum | `open`, `pending`, `solved`, `closed`, `reopened` |
 | priority | Enum | `low`, `normal`, `high`, `urgent` |
-| customer_id | UUID | FK → User, not null |
+| customer_id | UUID | FK → Customer, not null |
+| created_by | UUID | FK → User, not null (quem abriu) |
 | agent_id | UUID | FK → User, nullable |
 | product_id | UUID | FK → Product, nullable |
 | category_id | UUID | FK → Category, nullable |
@@ -189,7 +207,7 @@ Categorias para organizar Products e Tickets.
 |-------|------|-----------|
 | id | UUID | PK |
 | ticket_id | UUID | FK → Ticket, not null |
-| customer_id | UUID | FK → User, not null |
+| user_id | UUID | FK → User, not null (quem aprovou/rejeitou) |
 | action | String(20) | `approved` ou `rejected` |
 | comment | Text | Opcional (obrigatório se rejected) |
 | created_at | DateTime | Auto |
@@ -262,20 +280,33 @@ Cliente abre ticket
 
 | Método | Endpoint | Descrição | Auth |
 |--------|----------|-----------|------|
-| POST | /api/v1/auth/register | Registar user | No |
+| POST | /api/v1/auth/register | Registar customer + user | No |
 | POST | /api/v1/auth/login | Login → JWT | No |
 | POST | /api/v1/auth/refresh | Refresh token | No |
 | GET | /api/v1/auth/me | Perfil logado | Yes |
+
+### Customers
+
+| Método | Endpoint | Descrição | Auth |
+|--------|----------|-----------|------|
+| POST | /api/v1/customers | Criar customer (empresa) | No (publico) |
+| GET | /api/v1/customers | Listar customers | Admin |
+| GET | /api/v1/customers/{id} | Ver customer | Admin/Agent |
+| PATCH | /api/v1/customers/{id} | Editar customer | Admin |
+| DELETE | /api/v1/customers/{id} | Desativar customer | Admin |
+| GET | /api/v1/customers/{id}/tickets | Tickets do customer | Owner |
+| GET | /api/v1/customers/{id}/products | Produtos do customer | Owner |
+| GET | /api/v1/customers/{id}/users | Users do customer | Owner |
 
 ### Users
 
 | Método | Endpoint | Descrição | Auth |
 |--------|----------|-----------|------|
-| GET | /api/v1/users | Listar users | Admin |
+| GET | /api/v1/users | Listar users (staff) | Admin |
 | GET | /api/v1/users/{id} | Ver user | Yes |
 | PATCH | /api/v1/users/{id} | Editar user | Self/Admin |
 | DELETE | /api/v1/users/{id} | Desativar user | Admin |
-| GET | /api/v1/customers | Listar customers | Agent+ |
+| POST | /api/v1/customers/{id}/users | Criar user para customer | Admin |
 | GET | /api/v1/agents | Listar agents | Agent+ |
 
 ### Products
