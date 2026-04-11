@@ -1113,9 +1113,81 @@ docker service logs wolfx-atendimento_frontend -f
 
 ---
 
+## Notificações Telegram
+
+### Bot do Sistema
+
+| Campo | Valor |
+|-------|-------|
+| Bot | @celxarchitectbot |
+| Token | `8312031269:AAFto1ZfqRbj3e4mWYEBsV4KgaJ7GLGgVJ8` |
+| Chat ID Eduardo | `1229273513` |
+
+### Notificações Enviadas
+
+| Evento | Destinatário | Mensagem |
+|--------|--------------|----------|
+| Ticket criado | Agentes | "🎫 Novo ticket de {cliente}: {título}" |
+| Ticket atribuído | Agent | "📋 Ticket #{id} atribuído a si" |
+| Ticket resolvido | Cliente | "✅ Ticket #{id} resolvido por {agent}" |
+| Ticket reaberto | Agentes | "🔴 Ticket #{id} reaberto por {cliente}" |
+| SLA em risco | Agentes | "⚠️ Ticket #{id} em risco de violar SLA" |
+| SLA violado | Agentes | "🚨 Ticket #{id} violou SLA" |
+
+### Aprovação via Telegram
+
+Quando um ticket é marcado como "Resolved", o cliente recebe:
+
+```
+✅ Ticket #{id} resolvido
+━━━━━━━━━━━━━━━━━━━
+{agent_name} resolveu seu ticket:
+"{title}"
+
+📝 Resumo: {resolution_summary}
+
+[Votar ✅ Aprovar] [💬 Rejeitar + Comentar]
+```
+
+**Fluxo de Aprovação via Telegram:**
+
+```
+1. Agent marca ticket como "Resolved"
+2. Sistema envia mensagem Telegram ao cliente
+   → Inline keyboard com botões [✅ Aprovar] [❌ Rejeitar]
+3. Cliente clica num botão
+4. Bot processa callback e atualiza ticket:
+   - Aprovar → status = "closed"
+   - Rejeitar → pede comentário → status = "reopened"
+```
+
+**Handler de Callback:**
+
+```
+Callback Data: "approve:{ticket_id}"
+  → POST /api/v1/tickets/{ticket_id}/approve (como customer)
+
+Callback Data: "reject:{ticket_id}"
+  → Pede comentário ao cliente
+  → POST /api/v1/tickets/{ticket_id}/reject com comentário
+```
+
+**Vínculo User ↔ Telegram:**
+
+O Customer ou User tem `telegram_chat_id` para saber a quem enviar.
+
+```python
+# Em Customer ou User
+telegram_chat_id: Optional[str] = None
+telegram_username: Optional[str] = None
+```
+
+---
+
 ## Changelog
 
 | Data | Alteração |
 |------|-----------|
 | 2026-04-11 | Criado projeto e SPEC.md |
 | 2026-04-11 | Adicionado deployment (VPS + Docker Swarm + Traefik) |
+| 2026-04-11 | Adicionado Telegram approvals - notificação + inline buttons |

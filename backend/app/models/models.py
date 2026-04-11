@@ -89,6 +89,8 @@ class User(Base):
     name = Column(String(100), nullable=False)
     role = Column(String(20), nullable=False, default=UserRole.CUSTOMER.value)
     phone = Column(String(20), nullable=True)
+    telegram_chat_id = Column(String(50), nullable=True)
+    telegram_username = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

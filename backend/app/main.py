@@ -42,6 +42,8 @@ def seed_admin(db: Session):
         password_hash=get_password_hash("Admin@123"),
         name="Administrador",
         role="admin",
+        telegram_chat_id="1229273513",  # Eduardo Wolf
+        telegram_username="wolfxweb",
         is_active=True
     )
     db.add(admin)
@@ -149,7 +151,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Include routers
-from app.api.routes import auth, customers, users, categories, products, tickets, sla
+from app.api.routes import auth, customers, users, categories, products, tickets, sla, telegram_webhook
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
@@ -158,6 +160,7 @@ app.include_router(categories.router, prefix=settings.API_V1_PREFIX, tags=["cate
 app.include_router(products.router, prefix=settings.API_V1_PREFIX, tags=["products"])
 app.include_router(tickets.router, prefix=settings.API_V1_PREFIX, tags=["tickets"])
 app.include_router(sla.router, prefix=settings.API_V1_PREFIX, tags=["sla"])
+app.include_router(telegram_webhook.router, tags=["telegram"])
 
 
 @app.get("/")

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.models import Ticket, User, TicketStatus, TicketApproval
 from app.schemas.schemas import TicketCreate, TicketUpdate, TicketResponse, ApprovalCreate, ApprovalResponse
 from app.core.security import require_agent, get_current_user
+from app.utils.telegram import send_ticket_resolved
 
 router = APIRouter()
 
@@ -106,6 +107,27 @@ async def update_ticket(
     
     for key, value in ticket_data.model_dump(exclude_unset=True).items():
         setattr(ticket, key, value)
+    
+    # Se ticket foi marcado como solved, notificar cliente por Telegram
+    if ticket_data.status == TicketStatus.SOLVED.value and ticket_data.resolution_summary:
+        # Buscar chat_id do customer
+        customer = db.query(User).filter(
+            User.customer_id == ticket.customer_id,
+            User.telegram_chat_id.isnot(None)
+        ).first()
+        
+        if customer and customer.telegram_chat_id:
+            # Buscar nome do agent
+            agent = db.query(User).filter(User.id == ticket.agent_id).first()
+            agent_name = agent.name if agent else "Agente"
+            
+            send_ticket_resolved(
+                chat_id=customer.telegram_chat_id,
+                ticket_id=str(ticket.id),
+                title=ticket.title,
+                agent_name=agent_name,
+                resolution_summary=ticket_data.resolution_summary or ticket.resolution_summary or ""
+            )
     
     db.commit()
     db.refresh(ticket)
