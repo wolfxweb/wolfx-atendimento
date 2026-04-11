@@ -98,17 +98,53 @@ wolfx-atendimento/
 | status | Enum | `available`, `away`, `offline` |
 | max_tickets | Integer | Default 10 |
 
+### Category
+
+Categorias para organizar Products e Tickets.
+
+| Campo | Tipo | Validação |
+|-------|------|-----------|
+| id | UUID | PK |
+| name | String(100) | Not null |
+| slug | String(100) | Unique, not null |
+| type | Enum | `product`, `ticket` |
+| description | Text | Opcional |
+| color | String(7) | Hex color (ex: `#FF5733`) |
+| icon | String(50) | Icone (ex: `bug`, `wrench`) |
+| is_active | Boolean | Default True |
+| order | Integer | Order de exibição |
+| created_at | DateTime | Auto |
+| updated_at | DateTime | Auto |
+
+**Exemplos de Categorias de Produtos:**
+| name | slug | type | color | icon |
+|------|------|------|-------|------|
+| Eletrónicos | eletronicos | product | `#3B82F6` | `cpu` |
+| Móveis | moveis | product | `#8B5CF6` | `sofa` |
+| Roupas | roupas | product | `#EC4899` | `shirt` |
+| Alimentação | alimentacao | product | `#10B981` | `apple` |
+
+**Exemplos de Categorias de Tickets:**
+| name | slug | type | color | icon |
+|------|------|------|-------|------|
+| Suporte | suporte | ticket | `#EF4444` | `question` |
+| Garantia | garantia | ticket | `#F59E0B` | `shield` |
+| Devolução | devolucao | ticket | `#8B5CF6` | `refresh` |
+| Dúvida | duvida | ticket | `#3B82F6` | `help` |
+| Elogio | elogio | ticket | `#10B981` | `star` |
+| Sugestão | sugestao | ticket | `#EC4899` | `lightbulb` |
+
 ### Product
 
 | Campo | Tipo | Validação |
 |-------|------|-----------|
 | id | UUID | PK |
 | customer_id | UUID | FK → User, not null |
+| category_id | UUID | FK → Category, nullable |
 | name | String(200) | Not null |
 | sku | String(50) | Unique, not null |
 | description | Text | Opcional |
 | images | JSON | Array de URLs/caminhos |
-| category | String(100) | Opcional |
 | price | Decimal(10,2) | Opcional |
 | created_at | DateTime | Auto |
 | updated_at | DateTime | Auto |
@@ -125,9 +161,9 @@ wolfx-atendimento/
 | customer_id | UUID | FK → User, not null |
 | agent_id | UUID | FK → User, nullable |
 | product_id | UUID | FK → Product, nullable |
+| category_id | UUID | FK → Category, nullable |
 | photos | JSON | Array de URLs/caminhos |
 | tags | JSON | Array de strings |
-| category | String(100) | Opcional |
 | sla_status | Enum | `within`, `at_risk`, `breached` |
 | requires_approval | Boolean | Default True |
 | approved_at | DateTime | Nullable |
@@ -254,6 +290,18 @@ Cliente abre ticket
 | POST | /api/v1/products/{id}/images | Upload imagem | Owner |
 | DELETE | /api/v1/products/{id}/images/{name} | Remover imagem | Owner |
 
+### Categories
+
+| Método | Endpoint | Descrição | Auth |
+|--------|----------|-----------|------|
+| POST | /api/v1/categories | Criar categoria | Admin |
+| GET | /api/v1/categories | Listar categorias | Yes |
+| GET | /api/v1/categories/product | Categorias de produtos | Yes |
+| GET | /api/v1/categories/ticket | Categorias de tickets | Yes |
+| GET | /api/v1/categories/{id} | Ver categoria | Yes |
+| PATCH | /api/v1/categories/{id} | Editar categoria | Admin |
+| DELETE | /api/v1/categories/{id} | Apagar categoria | Admin |
+
 ### Tickets
 
 | Método | Endpoint | Descrição | Auth |
@@ -292,7 +340,7 @@ Cliente abre ticket
 | customer_id | UUID | `?customer_id=...` |
 | agent_id | UUID | `?agent_id=...` |
 | product_id | UUID | `?product_id=...` |
-| category | string | `?category=suporte` |
+| category_id | UUID | `?category_id=...` |
 | sla_status | equals | `?sla_status=breached` |
 | tags | contains | `?tags=urgente` |
 | created_at_from | date | `?created_at_from=2024-01-01` |
@@ -303,7 +351,7 @@ Cliente abre ticket
 | Parâmetro | Tipo | Exemplo |
 |-----------|------|---------|
 | customer_id | UUID | `?customer_id=...` |
-| category | string | `?category=eletronicos` |
+| category_id | UUID | `?category_id=...` |
 | sku | string | `?sku=ABC123` |
 | name | contains | `?name=iphone` |
 
