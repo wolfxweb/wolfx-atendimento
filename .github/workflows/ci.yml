@@ -70,33 +70,47 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     needs: unit-tests
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
-      - name: Install Playwright
+
+      - name: Install frontend dependencies
         run: |
-          npm install -g playwright
-          playwright install chromium
-      
+          cd frontend
+          npm ci
+
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          npx playwright install chromium --with-deps
+
       - name: Run E2E Tests
         run: |
-          cd backend/tests/e2e
-          playwright test --reporter=json --output=/tmp/e2e_report
+          cd frontend
+          npx playwright test --reporter=json --output=/tmp/e2e_report
         continue-on-error: true
-      
+        env:
+          PLAYWRIGHT_BASE_URL: https://atendimento.wolfx.com.br
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: /tmp/e2e_report
+          retention-days: 7
+
       - name: Send E2E Report to Telegram
         if: always()
         run: |
-          cd backend
-          python scripts/run_tests_and_notify.py \
+          python backend/scripts/run_tests_and_notify.py \
             --project "wolfx-atendimento" \
             --branch "${{ github.ref_name }}" \
             --commit "${{ github.sha }}" \

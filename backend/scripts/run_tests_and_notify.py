@@ -67,7 +67,7 @@ def run_pytest(tests_dir, test_type="unit", coverage=False):
     }
 
 
-def run_e2e_tests(playwright_dir=None):
+def run_e2e_tests(playwright_dir="frontend/tests/e2e"):
     """Executa testes E2E com Playwright"""
     output_file = "/tmp/test_report_e2e.json"
     
@@ -80,9 +80,9 @@ def run_e2e_tests(playwright_dir=None):
             "report": None
         }
     
-    # Executar com report JSON
+    # Executar com report JSON a partir do directório correcto
     cmd = f"playwright test --reporter=json --output={output_file}"
-    result = run_command(cmd)
+    result = run_command(cmd, cwd=playwright_dir)
     
     report_data = None
     if os.path.exists(output_file):
@@ -189,6 +189,7 @@ def main():
     parser.add_argument("--chat-id", default=os.getenv("TELEGRAM_CHAT_ID", "1229273513"))
     parser.add_argument("--tests-dir", default="tests")
     parser.add_argument("--include-e2e", action="store_true")
+    parser.add_argument("--e2e-dir", default="frontend/tests/e2e")
     parser.add_argument("--coverage", action="store_true")
     
     args = parser.parse_args()
@@ -224,7 +225,7 @@ def main():
         print("=" * 50)
         print("Executando testes E2E...")
         print("=" * 50)
-        e2e_result = run_e2e_tests()
+        e2e_result = run_e2e_tests(args.e2e_dir)
         results["e2e"] = parse_playwright_report(e2e_result.get("report"))
         results["e2e"]["output"] = e2e_result["output"]
         results["e2e"]["exit_code"] = e2e_result["exit_code"]

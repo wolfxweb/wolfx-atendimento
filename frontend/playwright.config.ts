@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  reporter: [['list']],
+  reporter: process.env.CI ? [['json', { outputFile: '/tmp/e2e_report/results.json' }], ['list']] : [['list']],
   use: {
     baseURL: 'https://atendimento.wolfx.com.br',
     trace: 'on-first-retry',

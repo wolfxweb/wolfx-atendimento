@@ -7,8 +7,8 @@ import os
 import sys
 import argparse
 
-# Adicionar o diretório do backend ao path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
+# Adicionar o diretório do backend ao path (dois níveis acima de scripts/)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 try:
     from app.utils.notifications import (
