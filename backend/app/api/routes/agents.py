@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.models import User, Agent, AgentStatus
-from app.schemas.schemas import AgentCreate, AgentUpdate, AgentResponse
+from app.schemas.schemas import AgentCreate, AgentUpdate, AgentResponse, UserResponse
 from app.core.security import require_admin, require_agent, get_current_user
 from app.utils.telegram import send_message as send_telegram_message
 
@@ -40,12 +40,14 @@ async def list_agents(
     for user in users:
         agent = db.query(Agent).filter(Agent.user_id == user.id).first()
         agent_data = {
-            "user_id": str(user.id),
+            "id": str(user.id),
+            "customer_id": str(user.customer_id) if user.customer_id else None,
             "email": user.email,
             "name": user.name,
-            "phone": user.phone,
             "role": user.role,
+            "phone": user.phone,
             "is_active": user.is_active,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
             "team": agent.team if agent else None,
             "status": agent.status if agent else "offline",
             "max_tickets": agent.max_tickets if agent else 10,

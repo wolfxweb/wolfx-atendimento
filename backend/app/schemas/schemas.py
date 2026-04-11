@@ -114,6 +114,24 @@ class AgentCreate(BaseModel):
     max_tickets: int = 10
 
 
+class AgentListItem(BaseModel):
+    """Resposta combinada de User + Agent para lista de agentes"""
+    id: UUID
+    customer_id: Optional[UUID]
+    email: str
+    name: str
+    role: str
+    phone: Optional[str]
+    is_active: bool
+    created_at: datetime
+    team: Optional[str]
+    status: str
+    max_tickets: int
+
+    class Config:
+        from_attributes = True
+
+
 # =====================
 # CATEGORY
 # =====================
