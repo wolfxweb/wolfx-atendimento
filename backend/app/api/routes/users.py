@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.models import User, Customer
 from app.schemas.schemas import UserCreate, UserUpdate, UserResponse
 from app.core.security import require_admin, require_agent, get_current_user, get_password_hash
+from app.utils.telegram import send_message as send_telegram_message
 
 router = APIRouter()
 
@@ -29,6 +30,49 @@ async def list_users(
     
     users = query.offset(skip).limit(limit).all()
     return users
+
+
+@router.post("/users", response_model=UserResponse)
+async def create_user(
+    user_data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Cria novo utilizador (admin only)"""
+    
+    # Verificar se email já existe
+    existing = db.query(User).filter(User.email == user_data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Verificar se customer existe (se especificado)
+    if user_data.customer_id:
+        customer = db.query(Customer).filter(Customer.id == user_data.customer_id).first()
+        if not customer:
+            raise HTTPException(status_code=400, detail="Customer not found")
+    
+    # Criar user
+    user = User(
+        email=user_data.email,
+        name=user_data.name,
+        password_hash=get_password_hash(user_data.password),
+        role=user_data.role,
+        customer_id=user_data.customer_id,
+        phone=user_data.phone,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Notificar via Telegram se tiver chat_id
+    if user_data.telegram_chat_id:
+        send_telegram_message(
+            chat_id=user_data.telegram_chat_id,
+            text=f"Conta criada com sucesso! Bem-vindo, {user.name}."
+        )
+    
+    return user
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)

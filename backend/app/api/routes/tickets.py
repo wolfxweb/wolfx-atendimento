@@ -1,5 +1,7 @@
 from typing import Optional, List
 from uuid import UUID
+import uuid
+import os
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
@@ -9,8 +11,26 @@ from app.models.models import Ticket, User, TicketStatus, TicketApproval
 from app.schemas.schemas import TicketCreate, TicketUpdate, TicketResponse, ApprovalCreate, ApprovalResponse
 from app.core.security import require_agent, get_current_user
 from app.utils.telegram import send_ticket_resolved
+from app.config import settings
 
 router = APIRouter()
+
+
+def save_file(file: UploadFile, subdir: str = "tickets") -> dict:
+    """Salva ficheiro e retorna info"""
+    ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+    filename = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join(settings.UPLOAD_DIR, subdir, filename)
+    
+    # Criar dir se não existir
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Salvar ficheiro
+    with open(filepath, "wb") as f:
+        content = file.file.read()
+        f.write(content)
+    
+    return {"filename": filename, "filepath": filepath, "url": f"/uploads/{subdir}/{filename}"}
 
 
 @router.get("/tickets", response_model=List[TicketResponse])
@@ -206,3 +226,82 @@ async def reject_ticket(
 ):
     approval_data.action = "rejected"
     return await approve_ticket(ticket_id, approval_data, db, current_user)
+
+
+@router.post("/tickets/{ticket_id}/photos")
+async def upload_ticket_photo(
+    ticket_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload de foto para ticket.
+    Suporta: jpg, jpeg, png, gif, webp
+    Máximo: 5MB por ficheiro
+    """
+    # Verificar se ticket existe
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    # Verificar acesso (customer dono ou agent/admin)
+    if current_user.role == "customer" and ticket.customer_id != current_user.customer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Validar tipo de ficheiro
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="File type not allowed")
+    
+    # Validar tamanho (5MB)
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+    
+    # Salvar ficheiro
+    file.file.seek(0)
+    result = save_file(file, subdir="tickets")
+    
+    # Adicionar URL às fotos do ticket
+    photos = ticket.photos or []
+    photos.append(result["url"])
+    ticket.photos = photos
+    
+    db.commit()
+    
+    return {"url": result["url"], "filename": result["filename"]}
+
+
+@router.delete("/tickets/{ticket_id}/photos/{filename}")
+async def delete_ticket_photo(
+    ticket_id: UUID,
+    filename: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Remove foto de ticket"""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    # Verificar acesso
+    if current_user.role == "customer" and ticket.customer_id != current_user.customer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Remover da lista
+    photos = ticket.photos or []
+    url_to_remove = f"/uploads/tickets/{filename}"
+    if url_to_remove in photos:
+        photos.remove(url_to_remove)
+        ticket.photos = photos
+        db.commit()
+        
+        # Apagar ficheiro fisico
+        filepath = os.path.join(settings.UPLOAD_DIR, "tickets", filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        
+        return {"message": "Photo deleted"}
+    
+    raise HTTPException(status_code=404, detail="Photo not found")

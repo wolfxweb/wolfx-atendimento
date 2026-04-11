@@ -12,6 +12,9 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=6)
     name: str = Field(..., min_length=2)
     role: str = "customer"
+    customer_id: Optional[UUID] = None
+    phone: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
 
 
 class UserLogin(BaseModel):
