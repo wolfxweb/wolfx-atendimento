@@ -186,7 +186,7 @@ app.include_router(categories.router, prefix=settings.API_V1_PREFIX, tags=["cate
 app.include_router(products.router, prefix=settings.API_V1_PREFIX, tags=["products"])
 app.include_router(tickets.router, prefix=settings.API_V1_PREFIX, tags=["tickets"])
 app.include_router(sla.router, prefix=settings.API_V1_PREFIX, tags=["sla"])
-app.include_router(telegram_webhook.router, tags=["telegram"])
+app.include_router(telegram_webhook.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
 
 
 @app.get("/")
