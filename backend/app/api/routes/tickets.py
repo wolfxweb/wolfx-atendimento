@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Ticket, User, TicketStatus, TicketApproval
-from app.schemas.schemas import TicketCreate, TicketUpdate, TicketResponse, ApprovalCreate, ApprovalResponse
+from app.models.models import Ticket, User, TicketStatus, TicketApproval, Comment
+from app.schemas.schemas import TicketCreate, TicketUpdate, TicketResponse, ApprovalCreate, ApprovalResponse, CommentCreate, CommentUpdate, CommentResponse
 from app.core.security import require_agent, get_current_user
 from app.utils.telegram import send_ticket_resolved
 from app.config import settings
@@ -303,5 +303,156 @@ async def delete_ticket_photo(
             os.remove(filepath)
         
         return {"message": "Photo deleted"}
-    
+
     raise HTTPException(status_code=404, detail="Photo not found")
+
+
+# =====================
+# COMMENTS
+# =====================
+
+@router.get("/tickets/{ticket_id}/comments", response_model=List[dict])
+async def list_comments(
+    ticket_id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista comentarios de um ticket"""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Verificar acesso
+    if current_user.role == "customer" and ticket.customer_id != current_user.customer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Se customer, só veem comentarios publicos
+    if current_user.role == "customer":
+        comments = db.query(Comment).filter(
+            Comment.ticket_id == ticket_id,
+            Comment.is_public == True
+        ).order_by(Comment.created_at.desc()).offset(skip).limit(limit).all()
+    else:
+        comments = db.query(Comment).filter(
+            Comment.ticket_id == ticket_id
+        ).order_by(Comment.created_at.desc()).offset(skip).limit(limit).all()
+
+    result = []
+    for c in comments:
+        result.append({
+            "id": str(c.id),
+            "ticket_id": str(c.ticket_id),
+            "author_id": str(c.author_id),
+            "author_name": c.author.name if c.author else None,
+            "author_role": c.author.role if c.author else None,
+            "body": c.body,
+            "is_public": c.is_public,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+
+    return result
+
+
+@router.post("/tickets/{ticket_id}/comments", response_model=dict)
+async def create_comment(
+    ticket_id: UUID,
+    comment_data: CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Adiciona comentario a um ticket"""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Verificar acesso
+    if current_user.role == "customer" and ticket.customer_id != current_user.customer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    comment = Comment(
+        ticket_id=ticket_id,
+        author_id=current_user.id,
+        body=comment_data.body,
+        is_public=comment_data.is_public
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+
+    return {
+        "id": str(comment.id),
+        "ticket_id": str(comment.ticket_id),
+        "author_id": str(comment.author_id),
+        "author_name": current_user.name,
+        "author_role": current_user.role,
+        "body": comment.body,
+        "is_public": comment.is_public,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+    }
+
+
+@router.patch("/tickets/{ticket_id}/comments/{comment_id}", response_model=dict)
+async def update_comment(
+    ticket_id: UUID,
+    comment_id: UUID,
+    comment_data: CommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Actualiza comentario (só o author ou admin)"""
+    comment = db.query(Comment).filter(
+        Comment.id == comment_id,
+        Comment.ticket_id == ticket_id
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Só o author ou admin pode editar
+    if comment.author_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if comment_data.body is not None:
+        comment.body = comment_data.body
+    if comment_data.is_public is not None:
+        comment.is_public = comment_data.is_public
+
+    db.commit()
+    db.refresh(comment)
+
+    return {
+        "id": str(comment.id),
+        "ticket_id": str(comment.ticket_id),
+        "author_id": str(comment.author_id),
+        "author_name": comment.author.name if comment.author else None,
+        "author_role": comment.author.role if comment.author else None,
+        "body": comment.body,
+        "is_public": comment.is_public,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+    }
+
+
+@router.delete("/tickets/{ticket_id}/comments/{comment_id}")
+async def delete_comment(
+    ticket_id: UUID,
+    comment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Apaga comentario (só o author ou admin)"""
+    comment = db.query(Comment).filter(
+        Comment.id == comment_id,
+        Comment.ticket_id == ticket_id
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Só o author ou admin pode apagar
+    if comment.author_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    db.delete(comment)
+    db.commit()
+
+    return {"message": "Comment deleted"}

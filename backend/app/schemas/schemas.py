@@ -172,6 +172,33 @@ class CategoryResponse(BaseModel):
 
 
 # =====================
+# COMMENT
+# =====================
+class CommentCreate(BaseModel):
+    body: str = Field(..., min_length=1)
+    is_public: bool = True
+
+
+class CommentUpdate(BaseModel):
+    body: Optional[str] = Field(None, min_length=1)
+    is_public: Optional[bool] = None
+
+
+class CommentResponse(BaseModel):
+    id: UUID
+    ticket_id: UUID
+    author_id: UUID
+    body: str
+    is_public: bool
+    created_at: datetime
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# =====================
 # PRODUCT
 # =====================
 class ProductCreate(BaseModel):
@@ -239,7 +266,7 @@ class TicketResponse(BaseModel):
     agent_id: Optional[UUID]
     product_id: Optional[UUID]
     category_id: Optional[UUID]
-    photos: List[dict]
+    photos: List[str]
     tags: List[str]
     sla_status: str
     requires_approval: bool
