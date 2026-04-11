@@ -1,0 +1,204 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+jobs:
+  # =====================
+  # UNIT TESTS
+  # =====================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-json-report pytest-cov
+      
+      - name: Run Unit Tests
+        run: |
+          cd backend
+          pytest tests/unit -v --tb=short --json-report --json-report-file=/tmp/unit_report.json
+        continue-on-error: true
+      
+      - name: Run Integration Tests
+        run: |
+          cd backend
+          pytest tests/integration -v --tb=short --json-report --json-report-file=/tmp/integration_report.json
+        continue-on-error: true
+      
+      - name: Send Test Report to Telegram
+        if: always()
+        run: |
+          python scripts/run_tests_and_notify.py \
+            --project "wolfx-atendimento" \
+            --branch "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --chat-id "${{ secrets.TELEGRAM_CHAT_ID }}"
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: /tmp/*.json
+          retention-days: 7
+
+  # =====================
+  # E2E TESTS (PLAYWRIGHT)
+  # =====================
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Playwright
+        run: |
+          npm install -g playwright
+          playwright install chromium
+      
+      - name: Run E2E Tests
+        run: |
+          cd backend/tests/e2e
+          playwright test --reporter=json --output=/tmp/e2e_report
+        continue-on-error: true
+      
+      - name: Send E2E Report to Telegram
+        if: always()
+        run: |
+          cd backend
+          python scripts/run_tests_and_notify.py \
+            --project "wolfx-atendimento" \
+            --branch "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --chat-id "${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --include-e2e
+
+  # =====================
+  # LINT
+  # =====================
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install linters
+        run: |
+          pip install flake8 black mypy
+      
+      - name: Run Flake8
+        run: |
+          cd backend
+          flake8 app --max-line-length=120 --ignore=E501,W503 || true
+      
+      - name: Run Black check
+        run: |
+          cd backend
+          black --check app || true
+
+  # =====================
+  # NOTIFY PR
+  # =====================
+  notify-pr:
+    name: Notify PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Notify PR Created/Updated
+        run: |
+          python scripts/notify_pr.py \
+            --action "${{ github.event.action }}" \
+            --pr ${{ github.event.pull_request.number }} \
+            --title "${{ github.event.pull_request.title }}" \
+            --body "${{ github.event.pull_request.body }}" \
+            --author "${{ github.event.pull_request.user.login }}" \
+            --branch "${{ github.event.pull_request.head.ref }}" \
+            --base "${{ github.event.pull_request.base.ref }}" \
+            --url "${{ github.event.pull_request.html_url }}" \
+            --project "wolfx-atendimento" \
+            --chat-id "${{ secrets.TELEGRAM_CHAT_ID }}"
+
+  # =====================
+  # BUILD & PUSH IMAGE
+  # =====================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [unit-tests, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/wolfxweb/wolfx-atendimento-api:latest
+            ghcr.io/wolfxweb/wolfx-atendimento-api:${{ github.sha }}
+      
+      - name: Notify Deploy Success
+        if: success()
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, 'backend')
+          from app.utils.notifications import send_deploy_success
+          send_deploy_success(
+            chat_ids=['${{ secrets.TELEGRAM_CHAT_ID }}'],
+            project_name='wolfx-atendimento',
+            environment='production',
+            version='${{ github.sha }}',
+            deployed_by='CI/CD'
+          )
+          print('Deploy notification sent')
+          "

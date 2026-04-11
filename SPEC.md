@@ -1113,7 +1113,7 @@ docker service logs wolfx-atendimento_frontend -f
 
 ---
 
-## Notificações Telegram
+## Notificações Telegram (Sistema Central)
 
 ### Bot do Sistema
 
@@ -1123,18 +1123,27 @@ docker service logs wolfx-atendimento_frontend -f
 | Token | `8312031269:AAFto1ZfqRbj3e4mWYEBsV4KgaJ7GLGgVJ8` |
 | Chat ID Eduardo | `1229273513` |
 
-### Notificações Enviadas
+### Módulo de Notificações
 
-| Evento | Destinatário | Mensagem |
-|--------|--------------|----------|
-| Ticket criado | Agentes | "🎫 Novo ticket de {cliente}: {título}" |
-| Ticket atribuído | Agent | "📋 Ticket #{id} atribuído a si" |
-| Ticket resolvido | Cliente | "✅ Ticket #{id} resolvido por {agent}" |
-| Ticket reaberto | Agentes | "🔴 Ticket #{id} reaberto por {cliente}" |
-| SLA em risco | Agentes | "⚠️ Ticket #{id} em risco de violar SLA" |
-| SLA violado | Agentes | "🚨 Ticket #{id} violou SLA" |
+Todas as notificações são geridas pelo módulo centralizado `backend/app/utils/notifications.py` que suporta **TODOS OS PROJETOS**.
 
-### Aprovação via Telegram
+### Tipos de Notificação
+
+| Tipo | Descrição | Destinatários |
+|------|-----------|---------------|
+| `TICKET_RESOLVED` | Ticket resolvido pendente aprovação | Cliente |
+| `TICKET_APPROVED` | Ticket aprovado pelo cliente | Agentes |
+| `TICKET_REJECTED` | Ticket rejeitado pelo cliente | Agentes |
+| `TEST_REPORT` | Relatório de testes (unit/integration/e2e) | Admin |
+| `PR_CREATED` | Pull request criado | Admin |
+| `PR_UPDATED` | Pull request atualizado | Admin |
+| `PR_MERGED` | Pull request merged | Admin |
+| `DEPLOY_SUCCESS` | Deploy concluído com sucesso | Admin |
+| `DEPLOY_FAILED` | Deploy falhou | Admin |
+| `SLA_WARNING` | SLA em risco | Agentes |
+| `SLA_BREACHED` | SLA violado | Agentes |
+
+### Aprovação via Telegram (Todos os Projetos)
 
 Quando um ticket é marcado como "Resolved", o cliente recebe:
 
@@ -1146,40 +1155,76 @@ Quando um ticket é marcado como "Resolved", o cliente recebe:
 
 📝 Resumo: {resolution_summary}
 
-[Votar ✅ Aprovar] [💬 Rejeitar + Comentar]
+[✅ Aprovar] [❌ Rejeitar]
 ```
 
-**Fluxo de Aprovação via Telegram:**
-
+**Callback Data Format:**
 ```
-1. Agent marca ticket como "Resolved"
-2. Sistema envia mensagem Telegram ao cliente
-   → Inline keyboard com botões [✅ Aprovar] [❌ Rejeitar]
-3. Cliente clica num botão
-4. Bot processa callback e atualiza ticket:
-   - Aprovar → status = "closed"
-   - Rejeitar → pede comentário → status = "reopened"
+approve:{project}:{ticket_id}  → Aprova ticket
+reject:{project}:{ticket_id}   → Rejeita ticket
 ```
 
-**Handler de Callback:**
+### Relatórios de Testes
+
+Após cada push/PR, o sistema gera e envia:
 
 ```
-Callback Data: "approve:{ticket_id}"
-  → POST /api/v1/tickets/{ticket_id}/approve (como customer)
+✅ Test Report - wolfx-atendimento
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌿 Branch: main
+� commit: a4b3c2d
+⏱️ Duração: 45.2s
 
-Callback Data: "reject:{ticket_id}"
-  → Pede comentário ao cliente
-  → POST /api/v1/tickets/{ticket_id}/reject com comentário
+📊 Resultados:
+• Total: 87
+• ✅ Passaram: 85
+• ❌ Falharam: 2
+• ⏭️ Saltados: 0
+
+📋 Erros:
+tests/unit/test_ticket.py::test_create FAILED
+tests/unit/test_sla.py::test_breach FAILED
 ```
 
-**Vínculo User ↔ Telegram:**
+**Script:** `backend/scripts/run_tests_and_notify.py`
 
-O Customer ou User tem `telegram_chat_id` para saber a quem enviar.
+### Notificações de PR
+
+Quando um PR é criado:
+
+```
+🆕 Pull Request Criado
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 Projeto: wolfx-atendimento
+#️⃣ PR: #45
+📝 Título: Fix ticket approval flow
+
+👤 Autor: wolfxweb
+🌿 De: feature/approval → main
+
+🔗 https://github.com/wolfxweb/wolfx-atendimento/pull/45
+```
+
+**Script:** `scripts/notify_pr.py`
+
+### GitHub Actions Workflow
+
+```yaml
+Jobs:
+  1. unit-tests     → pytest + report Telegram
+  2. integration    → pytest + report Telegram  
+  3. e2e-tests      → Playwright + report Telegram
+  4. lint           → flake8 + black
+  5. notify-pr      → Notifica PR criado/actualizado
+  6. build          → Docker image + deploy notification
+```
+
+### Vínculo User ↔ Telegram
 
 ```python
-# Em Customer ou User
-telegram_chat_id: Optional[str] = None
-telegram_username: Optional[str] = None
+class User(Base):
+    telegram_chat_id: Optional[str] = None   # Chat ID do Telegram
+    telegram_username: Optional[str] = None  # Username (@user)
 ```
 
 ---
@@ -1191,3 +1236,8 @@ telegram_username: Optional[str] = None
 | 2026-04-11 | Criado projeto e SPEC.md |
 | 2026-04-11 | Adicionado deployment (VPS + Docker Swarm + Traefik) |
 | 2026-04-11 | Adicionado Telegram approvals - notificação + inline buttons |
+| 2026-04-11 | Sistema de notificações centralizado para todos os projetos |
+| 2026-04-11 | Relatórios de teste via Telegram após cada push |
+| 2026-04-11 | Notificações de PR via Telegram |
+| 2026-04-11 | GitHub Actions CI/CD com notifications |
+| 2026-04-11 | Hooks pre-push com lint + testes |
