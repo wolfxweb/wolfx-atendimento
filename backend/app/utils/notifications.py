@@ -1,8 +1,8 @@
 """
-Sistema de notificações Telegram genérico para todos os projetos
-- Aprovações de tickets
-- Relatórios de testes
-- Notificações de PR
+Sistema de notificacoes Telegram genérico para todos os projetos
+- Aprovacoes de tickets
+- Relatorios de testes
+- Notificacoes de PR
 """
 import os
 import requests
@@ -28,6 +28,28 @@ class NotificationType(str, Enum):
     DEPLOY_FAILED = "deploy_failed"
     SLA_WARNING = "sla_warning"
     SLA_BREACHED = "sla_breached"
+
+
+# =====================
+# EMOJIS (Unicode safe)
+# =====================
+EMOJI_OK = "\u2705"
+EMOJI_FAIL = "\u274c"
+EMOJI_SKIP = "\u23ed"
+EMOJI_WARN = "\u26a0\ufe0f"
+EMOJI_ROCKET = "\U0001f680"
+EMOJI_FIRE = "\U0001f525"
+EMOJI_NEW = "\U0001f195"
+EMOJI_UPDATE = "\U0001f4dd"
+EMOJI_MERGE = "\U0001f389"
+EMOJI_BRANCH = "\U0001f4c7"
+EMOJI_COMMIT = "\U0001f4c4"
+EMOJI_CLOCK = "\u23f0"
+EMOJI_Hourglass = "\u23f3"
+EMOJI_ALERT = "\U0001f6a8"
+EMOJI_TICKET = "\U0001f3ab"
+EMOJI_BOOK = "\U0001f4d6"
+EMOJI_LINK = "\U0001f517"
 
 
 # =====================
@@ -57,7 +79,7 @@ def send_message(
 
 
 def send_photo(chat_id: str, photo_url: str, caption: str = None, parse_mode: str = "Markdown") -> dict:
-    """Envia foto (para relatórios com gráficos)"""
+    """Envia foto (para relatorios com graficos)"""
     url = TELEGRAM_API.format(BOT_TOKEN, "sendPhoto")
     payload = {
         "chat_id": chat_id,
@@ -72,7 +94,7 @@ def send_photo(chat_id: str, photo_url: str, caption: str = None, parse_mode: st
 
 
 def send_document(chat_id: str, file_path: str, caption: str = None) -> dict:
-    """Envia documento (relatórios JSON, PDFs)"""
+    """Envia documento (relatorios JSON, PDFs)"""
     url = TELEGRAM_API.format(BOT_TOKEN, "sendDocument")
     with open(file_path, "rb") as f:
         files = {"document": f}
@@ -102,20 +124,18 @@ def answer_callback(callback_query_id: str, text: str = "Processado!", show_aler
 def get_chat_ids_for_project(project_name: str) -> List[str]:
     """
     Retorna lista de chat_ids autorizados para um projeto.
-    Em produção isto viria de uma BD.
+    Em producao isto viria de uma BD.
     Por agora retorna o chat default.
     """
-    # TODO: Buscar de BD por project_name
-    # Por agora retorna sempre o admin
     return [DEFAULT_CHAT_ID]
 
 
 def notify_project(project_name: str, message: str, notification_type: NotificationType = None) -> dict:
-    """Envia notificação para todos os chats associados a um projeto"""
+    """Envia notificacao para todos os chats associados a um projeto"""
     chat_ids = get_chat_ids_for_project(project_name)
     results = []
     for chat_id in chat_ids:
-        result = send_message(chat_id, f"🏷️ *{project_name}*\n\n{message}")
+        result = send_message(chat_id, "{} *{}*\n\n{}".format(EMOJI_BOOK, project_name, message))
         results.append(result)
     return results
 
@@ -135,25 +155,28 @@ def send_ticket_approval_request(
     reject_callback: str = None
 ):
     """
-    Envia pedido de aprovação de ticket via Telegram.
-    approve_callback e reject_callback são URLs ou IDs de callback.
+    Envia pedido de aprovacao de ticket via Telegram.
+    approve_callback e reject_callback sao URLs ou IDs de callback.
     """
-    text = f"""✅ *Ticket Resolvido - Aprovação Necessária*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-🔖 Ticket: `#{ticket_id}`
-📝 Título: {ticket_title}
-
-👤 Resolvido por: {agent_name}
-📋 Resumo: {resolution_summary}
-
-O cliente precisa aprovar o encerramento deste ticket."""
+    text = (
+        "{} *Ticket Resolvido - Aprovacao Necessaria*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f516 Ticket: `{}`\n"
+        "\U0001f4dd Titulo: {}\n\n"
+        "\U0001f464 Resolvido por: {}\n"
+        "\U0001f4cb Resumo: {}\n\n"
+        "O cliente precisa aprovar o encerramento deste ticket."
+    ).format(
+        EMOJI_OK, project_name, ticket_id, ticket_title,
+        agent_name, resolution_summary
+    )
 
     inline_keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ Aprovar", "callback_data": f"approve:{project_name}:{ticket_id}"},
-                {"text": "❌ Rejeitar", "callback_data": f"reject:{project_name}:{ticket_id}"},
+                {"text": "{} Aprovar".format(EMOJI_OK), "callback_data": "approve:{}:{}".format(project_name, ticket_id)},
+                {"text": "{} Rejeitar".format(EMOJI_FAIL), "callback_data": "reject:{}:{}".format(project_name, ticket_id)},
             ]
         ]
     }
@@ -163,13 +186,14 @@ O cliente precisa aprovar o encerramento deste ticket."""
 
 def send_ticket_approved(chat_ids: List[str], ticket_id: str, ticket_title: str, project_name: str):
     """Notifica que ticket foi aprovado"""
-    text = f"""✅ *Ticket Aprovado*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-🔖 Ticket: `#{ticket_id}`
-📝: {ticket_title}
-
-O ticket foi aprovado e encerrado."""
+    text = (
+        "{} *Ticket Aprovado*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f516 Ticket: `{}`\n"
+        "\U0001f4dd: {}\n\n"
+        "O ticket foi aprovado e encerrado."
+    ).format(EMOJI_OK, project_name, ticket_id, ticket_title)
     
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -177,15 +201,15 @@ O ticket foi aprovado e encerrado."""
 
 def send_ticket_rejected(chat_ids: List[str], ticket_id: str, ticket_title: str, reason: str, project_name: str):
     """Notifica que ticket foi rejeitado"""
-    text = f"""❌ *Ticket Reaberto*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-🔖 Ticket: `#{ticket_id}`
-📝: {ticket_title}
-
-💬 Motivo: {reason}
-
-O ticket foi reaberto para revisão."""
+    text = (
+        "{} *Ticket Reaberto*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f516 Ticket: `{}`\n"
+        "\U0001f4dd: {}\n\n"
+        "\U0001f4ac Motivo: {}\n\n"
+        "O ticket foi reaberto para revisao."
+    ).format(EMOJI_FAIL, project_name, ticket_id, ticket_title, reason)
     
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -207,37 +231,45 @@ def format_test_report(
     pytest_output: str = None,
     coverage: float = None
 ) -> str:
-    """Formata relatório de testes para Telegram"""
+    """Formata relatorio de testes para Telegram"""
     
-    status_emoji = "✅" if failed == 0 else "❌"
+    status_emoji = EMOJI_OK if failed == 0 else EMOJI_FAIL
     
-    text = f"""{status_emoji} *Test Report - {project_name}*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌿 Branch: `{branch}`
-� commit: `{commit_sha[:8]}`
-⏱️ Duração: {duration:.1f}s
-
-📊 *Resultados:*
-• Total: {total_tests}
-• ✅ Passaram: {passed}
-• ❌ Falharam: {failed}
-• ⏭️ Saltados: {skipped}"""
+    text = (
+        "{} *Test Report - {}*\n"
+        "\u2500" * 30 + "\n"
+        "{} Branch: `{}`\n"
+        "{} Commit: `{}`\n"
+        "{} Duracao: {:.1f}s\n\n"
+        "*Resultados:*\n"
+        "- Total: {}\n"
+        "- {} Passaram: {}\n"
+        "- {} Falharam: {}\n"
+        "- {} Saltados: {}"
+    ).format(
+        status_emoji, project_name,
+        EMOJI_BRANCH, branch,
+        EMOJI_COMMIT, commit_sha[:8],
+        EMOJI_CLOCK, duration,
+        EMOJI_OK, passed,
+        EMOJI_FAIL, failed,
+        EMOJI_SKIP, skipped
+    )
 
     if coverage is not None:
-        coverage_emoji = "🟢" if coverage >= 80 else "🟡" if coverage >= 60 else "🔴"
-        text += f"\n• {coverage_emoji} Coverage: {coverage:.1f}%"
+        coverage_emoji = "\U0001f7e2" if coverage >= 80 else "\U0001f7e1" if coverage >= 60 else "\U0001f534"
+        text += "\n- {} Coverage: {:.1f}%".format(coverage_emoji, coverage)
 
     if failed > 0:
-        text += f"\n\n🚨 *{failed} teste(s) falharam!*\nVerificar logs para detalhes."
+        text += "\n\n{} *{} teste(s) falharam!*\nVerificar logs para detalhes.".format(EMOJI_FAIL, failed)
 
     if pytest_output and failed > 0:
-        # Pegar só as últimas linhas do output
         lines = pytest_output.strip().split("\n")
         error_lines = [l for l in lines if "FAILED" in l or "ERROR" in l or "AssertionError" in l]
         if error_lines:
-            text += "\n\n📋 *Erros:*\n" + "\n".join(error_lines[-5:])  # Últimos 5 erros
+            text += "\n\n*Erros:*\n" + "\n".join(error_lines[-5:])
 
-    text += f"\n\n🔗 Ver detalhes no CI/CD"
+    text += "\n\n" + EMOJI_LINK + " Ver detalhes no CI/CD"
     
     return text
 
@@ -255,7 +287,7 @@ def send_test_report(
     pytest_output: str = None,
     coverage: float = None
 ) -> List[dict]:
-    """Envia relatório de testes para múltiplos destinatários"""
+    """Envia relatorio de testes para multiplos destinatarios"""
     text = format_test_report(
         project_name, branch, commit_sha,
         total_tests, passed, failed, skipped, duration, pytest_output, coverage
@@ -276,8 +308,8 @@ def send_test_report_file(
     report_file_path: str,
     summary: dict
 ) -> dict:
-    """Envia relatório de testes como documento (JSON report do pytest)"""
-    caption = f"📊 Test Report: {project_name} ({branch})"
+    """Envia relatorio de testes como documento (JSON report do pytest)"""
+    caption = "Test Report: {} ({})".format(project_name, branch)
     return send_document(chat_id, report_file_path, caption)
 
 
@@ -296,19 +328,28 @@ def send_pr_created(
     base_branch: str,
     url: str
 ):
-    """Notifica criação de PR"""
-    text = f"""🆕 *Pull Request Criado*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-#️⃣ PR: `#{pr_number}`
-📝 Título: {pr_title}
-
-👤 Autor: {author}
-🌿 De: `{branch}` → `{base_branch}`
-
-💬 {pr_body[:200] if pr_body else 'Sem descrição'}{'...' if pr_body and len(pr_body) > 200 else ''}
-
-🔗 {url}"""
+    """Notifica criacao de PR"""
+    body_preview = (pr_body[:200] + "...") if pr_body and len(pr_body) > 200 else (pr_body or "Sem descricao")
+    
+    text = (
+        "{} *Pull Request Criado*\n"
+        "\u2500" * 30 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "#{} PR: `#{}`\n"
+        "\U0001f4dd Titulo: {}\n\n"
+        "\U0001f464 Autor: {}\n"
+        "{} De: `{}` -> `{}`\n\n"
+        "{} {}\n\n"
+        "{} {}"
+    ).format(
+        EMOJI_NEW, project_name,
+        "\U0001f4cc", pr_number,
+        pr_title,
+        author,
+        EMOJI_BRANCH, branch, base_branch,
+        "\U0001f4ac", body_preview,
+        EMOJI_LINK, url
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -319,30 +360,37 @@ def send_pr_updated(
     project_name: str,
     pr_number: int,
     pr_title: str,
-    action: str,  # opened, closed, merged, review_requested, etc.
+    action: str,
     author: str,
     url: str
 ):
-    """Notifica atualização de PR"""
+    """Notifica atualizacao de PR"""
     action_text = {
         "opened": "PR aberto para review",
         "closed": "PR fechado",
-        "merged": "PR merged! 🎉",
+        "merged": "PR merged! " + EMOJI_MERGE,
         "review_requested": "Review solicitado",
-        "approved": "Aprovado! ✅",
-        "changes_requested": "Alterações solicitadas",
+        "approved": "Aprovado! " + EMOJI_OK,
+        "changes_requested": "Alteracoes solicitadas",
     }
     
-    text = f"""📝 *PR Atualizado*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-#️⃣ PR: `#{pr_number}`
-📝: {pr_title}
-
-{action_text.get(action, action)}
-👤 Por: {author}
-
-🔗 {url}"""
+    text = (
+        "{} *PR Atualizado*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "#{} PR: `#{ }`\n"
+        "\U0001f4dd: {}\n\n"
+        "{}\n"
+        "\U0001f464 Por: {}\n\n"
+        "{} {}"
+    ).format(
+        EMOJI_UPDATE, project_name,
+        "\U0001f4cc", pr_number, pr_number,
+        pr_title,
+        action_text.get(action, action),
+        author,
+        EMOJI_LINK, url
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -358,16 +406,23 @@ def send_pr_merged(
     url: str
 ):
     """Notifica que PR foi merged"""
-    text = f"""🎉 *PR Merged!*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-#️⃣ PR: `#{pr_number}`
-📝: {pr_title}
-
-✅ Mergeado por: {merged_by}
-🌿 Branch: `{branch}`
-
-🔗 {url}"""
+    text = (
+        "{} *PR Merged!*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "#{} PR: `#{ }`\n"
+        "\U0001f4dd: {}\n\n"
+        "{} Mergeado por: {}\n"
+        "{} Branch: `{}`\n\n"
+        "{} {}"
+    ).format(
+        EMOJI_MERGE, project_name,
+        "\U0001f4cc", pr_number, pr_number,
+        pr_title,
+        EMOJI_OK, merged_by,
+        EMOJI_BRANCH, branch,
+        EMOJI_LINK, url
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -386,16 +441,23 @@ def send_deploy_success(
     duration: float = None
 ):
     """Notifica deploy bem sucedido"""
-    duration_text = f" ({duration:.1f}s)" if duration else ""
+    duration_text = " ({:.1f}s)".format(duration) if duration else ""
     
-    text = f"""🚀 *Deploy Bem Sucedido!*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-� Environment: `{environment}`
-📦 Versão: `{version}`
-👤 Por: {deployed_by}{duration_text}
-
-✅ Pronto em produção"""
+    text = (
+        "{} *Deploy Bem Sucedido!*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f3af Environment: `{}`\n"
+        "\U0001f4e6 Versao: `{}`\n"
+        "\U0001f464 Por: {}{}\n\n"
+        "{} Pronto em producao"
+    ).format(
+        EMOJI_ROCKET, project_name,
+        environment,
+        version,
+        deployed_by, duration_text,
+        EMOJI_OK
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -410,17 +472,23 @@ def send_deploy_failed(
     deployed_by: str
 ):
     """Notifica deploy falhou"""
-    text = f"""🚨 *Deploy Falhou!*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-� Environment: `{environment}`
-📦 Versão: `{version}`
-👤 Por: {deployed_by}
-
-❌ Erro:
-```
-{error[:500]}
-```"""
+    text = (
+        "{} *Deploy Falhou!*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f3af Environment: `{}`\n"
+        "\U0001f4e6 Versao: `{}`\n"
+        "\U0001f464 Por: {}\n\n"
+        "{} Erro:\n"
+        "```\n{}\n```"
+    ).format(
+        EMOJI_FIRE, project_name,
+        environment,
+        version,
+        deployed_by,
+        EMOJI_FAIL,
+        error[:500]
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -438,15 +506,19 @@ def send_sla_warning(
     project_name: str = "wolfx-atendimento"
 ):
     """Alerta de SLA em risco"""
-    text = f"""⚠️ *SLA em Risco*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-🔖 Ticket: `#{ticket_id}`
-📝: {ticket_title}
-
-⏰ Tempo restante: {minutes_remaining} minutos
-
-Ação necessária!""
+    text = (
+        "{} *SLA em Risco*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f516 Ticket: `{}`\n"
+        "\U0001f4dd: {}\n\n"
+        "{} Tempo restante: {} minutos\n\n"
+        "Acao necessaria!"
+    ).format(
+        EMOJI_WARN, project_name,
+        ticket_id, ticket_title,
+        EMOJI_CLOCK, minutes_remaining
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
@@ -459,14 +531,19 @@ def send_sla_breached(
     project_name: str = "wolfx-atendimento"
 ):
     """Alerta de SLA violado"""
-    text = f"""🚨 *SLA Violado!*
-━━━━━━━━━━━━━━━━━━━
-📌 Projeto: {project_name}
-🔖 Ticket: `#{ticket_id}`
-📝: {ticket_title}
-
-⏰ O prazo de resposta expirou!
-É necessário agir imediatamente!"""
+    text = (
+        "{} *SLA Violado!*\n"
+        "\u2500" * 20 + "\n"
+        "\U0001f4cc Projeto: {}\n"
+        "\U0001f516 Ticket: `{}`\n"
+        "\U0001f4dd: {}\n\n"
+        "{} O prazo de resposta expirou!\n"
+        "E necessario agir imediatamente!"
+    ).format(
+        EMOJI_ALERT, project_name,
+        ticket_id, ticket_title,
+        EMOJI_Hourglass
+    )
 
     for chat_id in chat_ids:
         send_message(chat_id, text)
