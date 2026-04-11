@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -8,7 +7,6 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,8 +14,9 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login(username, password);
-      navigate('/');
+      const userData = await login(username, password) as { role: string };
+      // Use window.location for reliable redirect in all environments
+      window.location.href = `/${userData.role}`;
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Check credentials.');
     } finally {

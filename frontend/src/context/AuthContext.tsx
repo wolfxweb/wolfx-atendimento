@@ -5,7 +5,7 @@ import api, { getMe } from '../api/client';
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<User>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -36,14 +36,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const accessToken = response.data.access_token;
 
+    // Save token to localStorage BEFORE getMe (interceptor reads from localStorage)
+    localStorage.setItem('token', accessToken);
+
     // Fetch user profile
     const userResponse = await getMe();
     const userData = userResponse.data;
 
     setToken(accessToken);
     setUser(userData);
-    localStorage.setItem('token', accessToken);
     localStorage.setItem('user', JSON.stringify(userData));
+    return userData;
   };
 
   const logout = () => {
