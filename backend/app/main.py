@@ -50,6 +50,31 @@ def seed_admin(db: Session):
     db.commit()
     print("Admin created: admin@wolfx.com / Admin@123")
 
+    # Criar agent de teste
+    agent = User(
+        customer_id=None,
+        email="agente@wolfx.com",
+        password_hash=get_password_hash("Agente@123"),
+        name="João Agent",
+        role="agent",
+        telegram_chat_id="1229273513",
+        is_active=True
+    )
+    db.add(agent)
+    db.flush()
+    
+    # Criar perfil Agent
+    from app.models.models import Agent
+    agent_profile = Agent(
+        user_id=agent.id,
+        team="Suporte",
+        status="available",
+        max_tickets=10
+    )
+    db.add(agent_profile)
+    db.commit()
+    print("Agent created: agente@wolfx.com / Agente@123")
+
 
 def seed_categories(db: Session):
     """Cria categorias padrão"""
@@ -151,11 +176,12 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Include routers
-from app.api.routes import auth, customers, users, categories, products, tickets, sla, telegram_webhook
+from app.api.routes import auth, customers, users, agents, categories, products, tickets, sla, telegram_webhook
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
 app.include_router(users.router, prefix=settings.API_V1_PREFIX, tags=["users"])
+app.include_router(agents.router, prefix=settings.API_V1_PREFIX, tags=["agents"])
 app.include_router(categories.router, prefix=settings.API_V1_PREFIX, tags=["categories"])
 app.include_router(products.router, prefix=settings.API_V1_PREFIX, tags=["products"])
 app.include_router(tickets.router, prefix=settings.API_V1_PREFIX, tags=["tickets"])

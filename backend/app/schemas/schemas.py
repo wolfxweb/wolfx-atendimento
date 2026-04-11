@@ -89,6 +89,32 @@ class UserUpdate(BaseModel):
 
 
 # =====================
+# AGENT
+# =====================
+class AgentResponse(BaseModel):
+    user_id: UUID
+    team: Optional[str]
+    status: str
+    max_tickets: int
+
+    class Config:
+        from_attributes = True
+
+
+class AgentUpdate(BaseModel):
+    team: Optional[str] = None
+    status: Optional[str] = None
+    max_tickets: Optional[int] = Field(None, ge=1, le=100)
+
+
+class AgentCreate(BaseModel):
+    user_id: UUID
+    team: Optional[str] = None
+    status: str = "available"
+    max_tickets: int = 10
+
+
+# =====================
 # CATEGORY
 # =====================
 class CategoryCreate(BaseModel):
