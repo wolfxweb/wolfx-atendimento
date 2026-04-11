@@ -18,7 +18,7 @@ async def list_customers(
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     query = db.query(Customer)
     
@@ -35,7 +35,7 @@ async def list_customers(
 async def create_customer(
     customer_data: CustomerCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     customer = Customer(**customer_data.model_dump())
     db.add(customer)
@@ -61,7 +61,7 @@ async def update_customer(
     customer_id: UUID,
     customer_data: CustomerUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
@@ -79,7 +79,7 @@ async def update_customer(
 async def delete_customer(
     customer_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:

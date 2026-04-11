@@ -50,7 +50,7 @@ async def list_ticket_categories(
 async def create_category(
     category_data: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     # Verificar se slug já existe
     existing = db.query(Category).filter(Category.slug == category_data.slug).first()
@@ -81,7 +81,7 @@ async def update_category(
     category_id: UUID,
     category_data: CategoryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:
@@ -99,7 +99,7 @@ async def update_category(
 async def delete_category(
     category_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:

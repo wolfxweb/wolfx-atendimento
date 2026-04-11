@@ -18,7 +18,7 @@ async def list_users(
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     query = db.query(User)
     
@@ -70,7 +70,7 @@ async def update_user(
 async def deactivate_user(
     user_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -84,7 +84,7 @@ async def deactivate_user(
 @router.get("/agents", response_model=List[UserResponse])
 async def list_agents(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_agent())
+    current_user: User = Depends(require_agent)
 ):
     agents = db.query(User).filter(User.role == "agent", User.is_active == True).all()
     return agents
@@ -95,7 +95,7 @@ async def create_user_for_customer(
     customer_id: UUID,
     user_data: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     # Verificar se customer existe
     customer = db.query(Customer).filter(Customer.id == customer_id).first()

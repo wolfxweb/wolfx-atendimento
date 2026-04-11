@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/sla", response_model=List[SLAResponse])
 async def list_slas(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_agent())
+    current_user: User = Depends(require_agent)
 ):
     # Se customer, ver só o seu SLA custom + global
     if current_user.role == "customer":
@@ -32,7 +32,7 @@ async def list_slas(
 async def create_sla(
     sla_data: SLACreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     # Verificar se customer_id é do próprio ou é admin
     if sla_data.customer_id and current_user.role != "admin":
@@ -97,7 +97,7 @@ async def update_sla(
 async def delete_sla(
     sla_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     sla = db.query(SLA).filter(SLA.id == sla_id).first()
     if not sla:
@@ -114,7 +114,7 @@ async def delete_sla(
 @router.get("/sla/global", response_model=List[SLAResponse])
 async def get_global_slas(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_agent())
+    current_user: User = Depends(require_agent)
 ):
     slas = db.query(SLA).filter(SLA.is_default == True).all()
     return slas
@@ -124,7 +124,7 @@ async def get_global_slas(
 async def update_global_slas(
     sla_data: SLAUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin())
+    current_user: User = Depends(require_admin)
 ):
     slas = db.query(SLA).filter(SLA.is_default == True).all()
     
@@ -139,7 +139,7 @@ async def update_global_slas(
 @router.get("/sla/dashboard", response_model=dict)
 async def sla_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_agent())
+    current_user: User = Depends(require_agent)
 ):
     tickets = db.query(Ticket).all()
     
@@ -156,7 +156,7 @@ async def sla_dashboard(
 @router.get("/sla/tickets/at-risk", response_model=List)
 async def get_at_risk_tickets(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_agent())
+    current_user: User = Depends(require_agent)
 ):
     tickets = db.query(Ticket).filter(Ticket.sla_status == "at_risk").all()
     return tickets
