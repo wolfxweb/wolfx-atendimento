@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Adicionar o diretório do backend ao path
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Importar após adicionar ao path
 try:
