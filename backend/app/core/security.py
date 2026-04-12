@@ -14,7 +14,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/lo
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    if not hashed_password:
+        return False
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except (TypeError, ValueError):
+        # Raised when hashed_password is not a valid bcrypt hash
+        return False
 
 
 def get_password_hash(password: str) -> str:
