@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTicket, getComments, createComment, approveTicket, rejectTicket } from '../../api/client';
-
+import Modal from '../../components/Modal';
 
 export default function CustomerTicketDetail() {
   const { id } = useParams<{ id: string }>();
@@ -10,6 +10,9 @@ export default function CustomerTicketDetail() {
   const queryClient = useQueryClient();
 
   const [commentText, setCommentText] = useState('');
+  const [showApproveSuccess, setShowApproveSuccess] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectComment, setRejectComment] = useState('');
 
   const { data: ticket, isLoading: ticketLoading } = useQuery({
     queryKey: ['ticket', id],
@@ -34,7 +37,7 @@ export default function CustomerTicketDetail() {
     mutationFn: (comment?: string) => approveTicket(id!, comment),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ticket', id] });
-      alert('Ticket aprovado! Obrigado pelo feedback.');
+      setShowApproveSuccess(true);
     },
   });
 
@@ -42,6 +45,8 @@ export default function CustomerTicketDetail() {
     mutationFn: ({ comment }: { comment: string }) => rejectTicket(id!, comment),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ticket', id] });
+      setShowRejectModal(false);
+      setRejectComment('');
     },
   });
 
@@ -109,10 +114,7 @@ export default function CustomerTicketDetail() {
                 ✓ Aprovar
               </button>
               <button
-                onClick={() => {
-                  const comment = prompt('Explique porque está a rejeitar:');
-                  if (comment) handleReject.mutate({ comment });
-                }}
+                onClick={() => setShowRejectModal(true)}
                 className="bg-red-600 text-white px-6 py-2.5 rounded-lg hover:bg-red-700 font-medium"
               >
                 ✗ Rejeitar
@@ -170,6 +172,65 @@ export default function CustomerTicketDetail() {
           </div>
         </div>
       </main>
+
+      {/* Approve Success Modal */}
+      <Modal isOpen={showApproveSuccess} onClose={() => setShowApproveSuccess(false)} title="Ticket Aprovado" size="sm">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+            <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="text-gray-700 mb-4">Ticket aprovado! Obrigado pelo feedback.</p>
+          <button
+            onClick={() => setShowApproveSuccess(false)}
+            className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium"
+          >
+            Fechar
+          </button>
+        </div>
+      </Modal>
+
+      {/* Reject Modal */}
+      <Modal isOpen={showRejectModal} onClose={() => { setShowRejectModal(false); setRejectComment(''); }} title="Rejeitar Ticket">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (rejectComment.trim()) {
+              handleReject.mutate({ comment: rejectComment });
+            }
+          }}
+          className="space-y-4"
+        >
+          <p className="text-gray-600 text-sm">Explique porque está a rejeitar a resolução deste ticket.</p>
+          <div>
+            <textarea
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
+              placeholder="Descreva o motivo da rejeição..."
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none"
+              required
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => { setShowRejectModal(false); setRejectComment(''); }}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!rejectComment.trim() || handleReject.isPending}
+              className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 font-medium disabled:opacity-50"
+            >
+              {handleReject.isPending ? 'A enviar...' : 'Rejeitar Ticket'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

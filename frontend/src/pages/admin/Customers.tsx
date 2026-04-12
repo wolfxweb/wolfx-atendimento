@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCustomers, createCustomer } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import Modal from '../../components/Modal';
 
 export default function AdminCustomers() {
   const { logout } = useAuth();
   const queryClient = useQueryClient();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '' });
+  const [error, setError] = useState('');
 
   const { data: customers, isLoading } = useQuery({
     queryKey: ['customers'],
@@ -13,17 +18,29 @@ export default function AdminCustomers() {
 
   const createMutation = useMutation({
     mutationFn: createCustomer,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customers'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setIsModalOpen(false);
+      setFormData({ name: '', email: '', phone: '', password: '' });
+      setError('');
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.detail || 'Erro ao criar cliente');
+    },
   });
 
-  const handleCreate = () => {
-    const name = prompt('Nome da empresa:');
-    const email = prompt('Email:');
-    const phone = prompt('Telefone (opcional):');
-    const password = prompt('Password inicial:');
-    if (name && email && password) {
-      createMutation.mutate({ name, email, phone: phone || undefined, password });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.email || !formData.password) {
+      setError('Nome, email e password são obrigatórios');
+      return;
     }
+    createMutation.mutate({
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone || undefined,
+      password: formData.password,
+    });
   };
 
   return (
@@ -48,7 +65,10 @@ export default function AdminCustomers() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Clientes</h2>
-          <button onClick={handleCreate} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium">
+          <button
+            onClick={() => { setIsModalOpen(true); setError(''); setFormData({ name: '', email: '', phone: '', password: '' }); }}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium"
+          >
             + Novo Cliente
           </button>
         </div>
@@ -90,6 +110,70 @@ export default function AdminCustomers() {
           </div>
         )}
       </main>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Novo Cliente">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-lg">{error}</div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Empresa *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Empresa X"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="admin@empresa.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="+351 912 345 678"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password Inicial *</label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="••••••••"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending}
+              className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'A criar...' : 'Criar Cliente'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
