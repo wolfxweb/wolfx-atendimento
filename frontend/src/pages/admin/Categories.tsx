@@ -192,6 +192,7 @@ export default function AdminCategories() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [error, setError] = useState('');
 
   const [form, setForm] = useState({
@@ -207,7 +208,7 @@ export default function AdminCategories() {
   });
 
   const { data: categories = [], isLoading } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', filterType],
     queryFn: () => getCategories(filterType === 'all' ? undefined : filterType).then(r => r.data as Category[]),
   });
 
@@ -402,9 +403,7 @@ export default function AdminCategories() {
                   category={cat}
                   onEdit={openEdit}
                   onDelete={(cat) => {
-                    if (confirm(`Eliminar categoria "${cat.name}" e as suas subcategorias?`)) {
-                      deleteMutation.mutate(cat.id);
-                    }
+                    setCategoryToDelete(cat);
                   }}
                 />
               ))}
@@ -624,6 +623,48 @@ export default function AdminCategories() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!categoryToDelete}
+        onClose={() => setCategoryToDelete(null)}
+        title="Eliminar Categoria"
+        size="sm"
+      >
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+            <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Eliminar "{categoryToDelete?.name}"?
+          </h3>
+          <p className="text-sm text-gray-500 mb-6">
+            Esta categoria e as suas subcategorias serão eliminadas. Esta ação não pode ser undone.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setCategoryToDelete(null)}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => {
+                if (categoryToDelete) {
+                  deleteMutation.mutate(categoryToDelete.id);
+                  setCategoryToDelete(null);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 font-medium disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'A eliminar...' : 'Eliminar'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </Layout>
   );
