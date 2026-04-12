@@ -146,6 +146,28 @@ def seed_sla_default(db: Session):
     print("SLA defaults seeded")
 
 
+def seed_menu(db: Session):
+    """Cria menu items padrão (idempotente)"""
+    from app.models.models import MenuItem
+
+    if db.query(MenuItem).first():
+        return
+
+    menu_items = [
+        {"category": "Geral", "title": "Dashboard", "href": "/admin", "icon": "dashboard", "order": 1},
+        {"category": "Geral", "title": "Tickets", "href": "/admin/tickets", "icon": "tickets", "order": 2},
+        {"category": "Gestao", "title": "Clientes", "href": "/admin/customers", "icon": "customers", "order": 1},
+        {"category": "Gestao", "title": "Agentes", "href": "/admin/agents", "icon": "agents", "order": 2},
+        {"category": "Gestao", "title": "Produtos", "href": "/admin/products", "icon": "products", "order": 3},
+        {"category": "Gestao", "title": "SLAs", "href": "/admin/slas", "icon": "sla", "order": 4},
+        {"category": "Configuracoes", "title": "Categorias", "href": "/admin/categories", "icon": "default", "order": 1},
+    ]
+    for item_data in menu_items:
+        db.add(MenuItem(**item_data))
+    db.commit()
+    print("Menu items seeded")
+
+
 # =====================
 # LIFESPAN
 # =====================
@@ -160,6 +182,7 @@ async def lifespan(app: FastAPI):
         seed_all(db)
         seed_categories(db)
         seed_sla_default(db)
+        seed_menu(db)
     finally:
         db.close()
     
@@ -190,7 +213,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Include routers
-from app.api.routes import auth, customers, users, agents, categories, products, tickets, sla, telegram_webhook
+from app.api.routes import auth, customers, users, agents, categories, products, tickets, sla, telegram_webhook, menu
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
@@ -201,6 +224,7 @@ app.include_router(products.router, prefix=settings.API_V1_PREFIX, tags=["produc
 app.include_router(tickets.router, prefix=settings.API_V1_PREFIX, tags=["tickets"])
 app.include_router(sla.router, prefix=settings.API_V1_PREFIX, tags=["sla"])
 app.include_router(telegram_webhook.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
+app.include_router(menu.router, prefix=settings.API_V1_PREFIX, tags=["menu"])
 
 
 @app.get("/")

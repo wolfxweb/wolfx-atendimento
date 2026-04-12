@@ -1,9 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAgents, updateAgentStatus } from '../../api/client';
-import { useAuth } from '../../context/AuthContext';
+import Layout from '../../components/Layout';
 
 export default function AdminAgents() {
-  const { logout } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: agents, isLoading } = useQuery({
@@ -17,26 +16,8 @@ export default function AdminAgents() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-indigo-600">wolfx.atendimento</h1>
-          <div className="flex items-center gap-4">
-            <nav className="flex gap-4">
-              <a href="/admin" className="text-sm text-gray-600 hover:text-indigo-600">Dashboard</a>
-              <a href="/admin/tickets" className="text-sm text-gray-600 hover:text-indigo-600">Tickets</a>
-              <a href="/admin/customers" className="text-sm text-gray-600 hover:text-indigo-600">Clientes</a>
-              <a href="/admin/agents" className="text-sm text-indigo-600 font-medium">Agentes</a>
-              <a href="/admin/products" className="text-sm text-gray-600 hover:text-indigo-600">Produtos</a>
-              <a href="/admin/slas" className="text-sm text-gray-600 hover:text-indigo-600">SLAs</a>
-            </nav>
-            <button onClick={logout} className="text-sm text-red-600">Sair</button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Agentes</h2>
+    <Layout>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Agentes</h2>
 
         {isLoading ? (
           <div className="text-center py-12">Carregando...</div>
@@ -92,7 +73,6 @@ export default function AdminAgents() {
             </table>
           </div>
         )}
-      </main>
-    </div>
+    </Layout>
   );
 }

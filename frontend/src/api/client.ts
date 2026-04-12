@@ -124,3 +124,17 @@ export const getSLAs = () => api.get('/sla');
 export const getGlobalSLAs = () => api.get('/sla/global');
 
 export const getSLADashboard = () => api.get('/sla/dashboard');
+
+// Menu
+export const getMenuItems = () => api.get('/menu');
+
+export const createMenuItem = (data: { category: string; title: string; href: string; icon?: string; order?: number }) =>
+  api.post('/menu', data);
+
+export const updateMenuItem = (id: string, data: { category?: string; title?: string; href?: string; icon?: string; order?: number; is_active?: boolean }) =>
+  api.put(`/menu/${id}`, data);
+
+export const deleteMenuItem = (id: string) => api.delete(`/menu/${id}`);
+
+export const createMenuItemsBulk = (items: { category: string; title: string; href: string; icon?: string; order?: number }[]) =>
+  api.post('/menu/bulk', items);

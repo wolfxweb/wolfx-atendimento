@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCustomers, createCustomer } from '../../api/client';
-import { useAuth } from '../../context/AuthContext';
+import Layout from '../../components/Layout';
 import Modal from '../../components/Modal';
 
 export default function AdminCustomers() {
-  const { logout } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '' });
@@ -44,25 +43,7 @@ export default function AdminCustomers() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-indigo-600">wolfx.atendimento</h1>
-          <div className="flex items-center gap-4">
-            <nav className="flex gap-4">
-              <a href="/admin" className="text-sm text-gray-600 hover:text-indigo-600">Dashboard</a>
-              <a href="/admin/tickets" className="text-sm text-gray-600 hover:text-indigo-600">Tickets</a>
-              <a href="/admin/customers" className="text-sm text-indigo-600 font-medium">Clientes</a>
-              <a href="/admin/agents" className="text-sm text-gray-600 hover:text-indigo-600">Agentes</a>
-              <a href="/admin/products" className="text-sm text-gray-600 hover:text-indigo-600">Produtos</a>
-              <a href="/admin/slas" className="text-sm text-gray-600 hover:text-indigo-600">SLAs</a>
-            </nav>
-            <button onClick={logout} className="text-sm text-red-600">Sair</button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
+    <Layout>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Clientes</h2>
           <button
@@ -109,7 +90,6 @@ export default function AdminCustomers() {
             </table>
           </div>
         )}
-      </main>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Novo Cliente">
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -174,6 +154,6 @@ export default function AdminCustomers() {
           </div>
         </form>
       </Modal>
-    </div>
+    </Layout>
   );
 }

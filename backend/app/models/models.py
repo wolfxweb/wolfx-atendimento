@@ -236,6 +236,23 @@ class TicketApproval(Base):
 
 
 # =====================
+# MENU ITEM
+# =====================
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category = Column(String(100), nullable=False)  # e.g. "Gestao", "Configuracoes"
+    title = Column(String(200), nullable=False)     # e.g. "Tickets", "Clientes"
+    href = Column(String(500), nullable=False)      # e.g. "/admin/tickets"
+    icon = Column(String(50), nullable=True)       # e.g. "ticket", "users"
+    order = Column(Integer, default=0)               # sort order within category
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# =====================
 # SLA
 # =====================
 class SLA(Base):

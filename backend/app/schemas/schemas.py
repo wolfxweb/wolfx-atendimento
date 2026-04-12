@@ -352,3 +352,38 @@ class PaginatedResponse(BaseModel):
     page: int
     per_page: int
     pages: int
+
+
+# =====================
+# MENU ITEM
+# =====================
+class MenuItemCreate(BaseModel):
+    category: str = Field(..., min_length=1, max_length=100)
+    title: str = Field(..., min_length=1, max_length=200)
+    href: str = Field(..., min_length=1, max_length=500)
+    icon: Optional[str] = Field(None, max_length=50)
+    order: int = 0
+
+
+class MenuItemUpdate(BaseModel):
+    category: Optional[str] = Field(None, min_length=1, max_length=100)
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    href: Optional[str] = Field(None, min_length=1, max_length=500)
+    icon: Optional[str] = Field(None, max_length=50)
+    order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class MenuItemResponse(BaseModel):
+    id: UUID
+    category: str
+    title: str
+    href: str
+    icon: Optional[str]
+    order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
