@@ -14,6 +14,7 @@ import AdminCustomers from './pages/admin/Customers';
 import AdminAgents from './pages/admin/Agents';
 import AdminProducts from './pages/admin/Products';
 import AdminSLAs from './pages/admin/SLAs';
+import AdminCategories from './pages/admin/Categories';
 import CustomerProducts from './pages/customer/Products';
 
 const queryClient = new QueryClient();
@@ -100,6 +101,9 @@ function AppRoutes() {
       } />
       <Route path="/admin/slas" element={
         <ProtectedRoute roles={['admin']}><AdminSLAs /></ProtectedRoute>
+      } />
+      <Route path="/admin/categories" element={
+        <ProtectedRoute roles={['admin']}><AdminCategories /></ProtectedRoute>
       } />
 
       <Route path="*" element={<Navigate to="/" replace />} />

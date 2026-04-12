@@ -81,6 +81,28 @@ export const rejectTicket = (id: string, comment: string) =>
 export const getCategories = (type?: string) =>
   api.get('/categories', { params: { type } });
 
+export const createCategory = (data: {
+  name: string;
+  slug: string;
+  type: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  order?: number;
+}) => api.post('/categories', data);
+
+export const updateCategory = (id: string, data: {
+  name?: string;
+  slug?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  order?: number;
+  is_active?: boolean;
+}) => api.patch(`/categories/${id}`, data);
+
+export const deleteCategory = (id: string) => api.delete(`/categories/${id}`);
+
 // Products
 export const getProducts = (params?: { category_id?: string; search?: string }) =>
   api.get('/products', { params });
