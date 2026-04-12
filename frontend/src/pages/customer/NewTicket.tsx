@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createTicket, getCategories } from '../../api/client';
+import SearchableSelect from '../../components/SearchableSelect';
 
 export default function CustomerNewTicket() {
   const navigate = useNavigate();
@@ -88,19 +89,17 @@ export default function CustomerNewTicket() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                <select
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                >
-                  <option value="">Selecionar categoria</option>
-                  {categories?.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Categoria"
+                options={categories?.map((cat: any) => ({
+                  value: cat.id,
+                  label: cat.name,
+                  color: cat.color,
+                })) || []}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder="Selecionar categoria..."
+              />
             </div>
 
             {mutation.error && (
