@@ -32,7 +32,7 @@ jobs:
         run: |
           cd backend
           pip install -r requirements.txt
-          pip install pytest pytest-json-report pytest-cov
+          pip install pytest pytest-json-report pytest-cov pytest-asyncio httpx
       
       - name: Run Unit Tests
         run: |
