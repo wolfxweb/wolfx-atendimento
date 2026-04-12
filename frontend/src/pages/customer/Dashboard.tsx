@@ -24,6 +24,11 @@ export default function CustomerDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold text-indigo-600">wolfx.atendimento</h1>
           <div className="flex items-center gap-4">
+            <nav className="flex gap-4">
+              <a href="/customer" className="text-sm text-indigo-600 font-medium">Dashboard</a>
+              <a href="/customer/tickets" className="text-sm text-gray-600 hover:text-indigo-600">Tickets</a>
+              <a href="/customer/products" className="text-sm text-gray-600 hover:text-indigo-600">Produtos</a>
+            </nav>
             <span className="text-sm text-gray-600">{user?.name}</span>
             <button
               onClick={logout}

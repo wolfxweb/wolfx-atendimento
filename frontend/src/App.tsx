@@ -14,6 +14,7 @@ import AdminCustomers from './pages/admin/Customers';
 import AdminAgents from './pages/admin/Agents';
 import AdminProducts from './pages/admin/Products';
 import AdminSLAs from './pages/admin/SLAs';
+import CustomerProducts from './pages/customer/Products';
 
 const queryClient = new QueryClient();
 
@@ -68,6 +69,9 @@ function AppRoutes() {
       } />
       <Route path="/customer/tickets/:id" element={
         <ProtectedRoute roles={['customer']}><CustomerTicketDetail /></ProtectedRoute>
+      } />
+      <Route path="/customer/products" element={
+        <ProtectedRoute roles={['customer']}><CustomerProducts /></ProtectedRoute>
       } />
 
       {/* Agent Routes */}
