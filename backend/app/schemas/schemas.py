@@ -227,6 +227,7 @@ class ProductResponse(BaseModel):
     price: Optional[float]
     created_at: datetime
     updated_at: datetime
+    category: Optional["CategoryResponse"] = None
 
     class Config:
         from_attributes = True

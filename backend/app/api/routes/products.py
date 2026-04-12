@@ -7,8 +7,9 @@ import uuid
 import aiofiles
 
 from app.database import get_db
-from app.models.models import Product, User, Category
+from app.models.models import Product, Category, User
 from app.schemas.schemas import ProductCreate, ProductUpdate, ProductResponse
+from sqlalchemy.orm import joinedload
 from app.core.security import require_agent, get_current_user
 from app.config import settings
 
@@ -37,7 +38,7 @@ async def list_products(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(Product)
+    query = db.query(Product).options(joinedload(Product.category))
     
     # Customers só veem os seus próprios produtos
     if current_user.role == "customer":
@@ -85,7 +86,7 @@ async def get_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).options(joinedload(Product.category)).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     
