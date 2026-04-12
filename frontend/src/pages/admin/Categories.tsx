@@ -188,6 +188,7 @@ function TreeItem({
 export default function AdminCategories() {
   const queryClient = useQueryClient();
   const [filterType, setFilterType] = useState<string>('all');
+  const [searchName, setSearchName] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -202,6 +203,7 @@ export default function AdminCategories() {
     icon: '',
     order: 0,
     parent_id: '' as string | undefined,
+    is_active: true,
   });
 
   const { data: categories = [], isLoading } = useQuery({
@@ -209,7 +211,11 @@ export default function AdminCategories() {
     queryFn: () => getCategories(filterType === 'all' ? undefined : filterType).then(r => r.data as Category[]),
   });
 
-  const tree = buildTree(categories);
+  const filteredCategories = categories.filter(c =>
+    !searchName || c.name.toLowerCase().includes(searchName.toLowerCase()) ||
+    c.slug.toLowerCase().includes(searchName.toLowerCase())
+  );
+  const tree = buildTree(filteredCategories);
 
   const createMutation = useMutation({
     mutationFn: createCategory,
@@ -247,7 +253,7 @@ export default function AdminCategories() {
   });
 
   const resetForm = () => {
-    setForm({ name: '', slug: '', type: 'ticket', description: '', color: '#3B82F6', icon: '', order: 0, parent_id: undefined });
+    setForm({ name: '', slug: '', type: 'ticket', description: '', color: '#3B82F6', icon: '', order: 0, parent_id: undefined, is_active: true });
     setError('');
   };
 
@@ -267,6 +273,7 @@ export default function AdminCategories() {
       icon: cat.icon || '',
       order: cat.order,
       parent_id: cat.parent_id || undefined,
+      is_active: cat.is_active,
     });
     setError('');
     setIsEditOpen(true);
@@ -330,7 +337,7 @@ export default function AdminCategories() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-4">
         {['all', 'ticket', 'product'].map(type => (
           <button
             key={type}
@@ -344,12 +351,35 @@ export default function AdminCategories() {
             {type === 'all' ? 'Todas' : type === 'ticket' ? 'Tickets' : 'Produtos'}
           </button>
         ))}
+        <div className="flex-1" />
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={searchName}
+            onChange={e => setSearchName(e.target.value)}
+            placeholder="Pesquisar por nome..."
+            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-64"
+          />
+          {searchName && (
+            <button
+              onClick={() => setSearchName('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+      </div>
       </div>
 
       {/* Categories Table */}
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">Carregando...</div>
-      ) : categories.length === 0 ? (
+      ) : filteredCategories.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-12 text-center">
           <p className="text-gray-500">Nenhuma categoria encontrada.</p>
         </div>
