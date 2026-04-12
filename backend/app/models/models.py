@@ -139,6 +139,10 @@ class Category(Base):
     products = relationship("Product", back_populates="category")
     tickets = relationship("Ticket", back_populates="category")
 
+    # Hierarquia
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True)
+    children = relationship("Category", backref="parent", remote_side=[id])
+
 
 # =====================
 # PRODUCT

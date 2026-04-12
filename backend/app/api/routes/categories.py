@@ -14,11 +14,15 @@ router = APIRouter()
 @router.get("/categories", response_model=List[CategoryResponse])
 async def list_categories(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=200),
+    type_filter: Optional[str] = Query(None, alias="type"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    categories = db.query(Category).filter(Category.is_active == True).offset(skip).limit(limit).all()
+    query = db.query(Category)
+    if type_filter:
+        query = query.filter(Category.type == type_filter)
+    categories = query.order_by(Category.order, Category.name).offset(skip).limit(limit).all()
     return categories
 
 

@@ -89,6 +89,7 @@ export const createCategory = (data: {
   color?: string;
   icon?: string;
   order?: number;
+  parent_id?: string;
 }) => api.post('/categories', data);
 
 export const updateCategory = (id: string, data: {

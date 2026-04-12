@@ -143,6 +143,7 @@ class CategoryCreate(BaseModel):
     color: Optional[str] = "#3B82F6"
     icon: Optional[str] = None
     order: Optional[int] = 0
+    parent_id: Optional[UUID] = None
 
 
 class CategoryUpdate(BaseModel):
@@ -153,6 +154,7 @@ class CategoryUpdate(BaseModel):
     icon: Optional[str] = None
     order: Optional[int] = None
     is_active: Optional[bool] = None
+    parent_id: Optional[UUID] = None
 
 
 class CategoryResponse(BaseModel):
@@ -165,6 +167,7 @@ class CategoryResponse(BaseModel):
     icon: Optional[str]
     is_active: bool
     order: int
+    parent_id: Optional[UUID]
     created_at: datetime
 
     class Config:
