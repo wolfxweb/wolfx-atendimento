@@ -262,6 +262,11 @@ class CommentCreate(BaseModel):
     is_public: bool = True
 
 
+class CommentUpdate(BaseModel):
+    body: Optional[str] = Field(None, min_length=1)
+    is_public: Optional[bool] = None
+
+
 class CommentResponse(BaseModel):
     id: UUID
     ticket_id: UUID
