@@ -243,6 +243,7 @@ class TicketCreate(BaseModel):
     category_id: Optional[UUID] = None
     product_id: Optional[UUID] = None
     tags: Optional[List[str]] = []
+    customer_id: Optional[UUID] = None  # só admin pode definir ao criar
 
 
 class TicketUpdate(BaseModel):

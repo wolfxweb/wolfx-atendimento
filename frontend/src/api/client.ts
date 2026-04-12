@@ -44,7 +44,7 @@ export const getTickets = (params?: { status?: string; priority?: string }) =>
 
 export const getTicket = (id: string) => api.get(`/tickets/${id}`);
 
-export const createTicket = (data: { title: string; description: string; priority: string; category_id?: string; product_id?: string }) =>
+export const createTicket = (data: { title: string; description: string; priority: string; category_id?: string; product_id?: string; customer_id?: string }) =>
   api.post('/tickets', data);
 
 export const updateTicket = (id: string, data: Partial<{ status: string; agent_id: string; resolution_summary: string }>) =>

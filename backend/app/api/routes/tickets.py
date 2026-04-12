@@ -75,12 +75,20 @@ async def create_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "customer":
-        raise HTTPException(status_code=403, detail="Only customers can create tickets")
-    
+    ticket_dict = ticket_data.model_dump()
+
+    if current_user.role == "customer":
+        # Customers must use their own customer_id
+        ticket_dict["customer_id"] = current_user.customer_id
+    elif current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only customers or admins can create tickets")
+
+    # Admin must specify customer_id when creating on behalf of a customer
+    if current_user.role == "admin" and not ticket_dict.get("customer_id"):
+        raise HTTPException(status_code=400, detail="Admin must specify customer_id when creating a ticket")
+
     ticket = Ticket(
-        **ticket_data.model_dump(),
-        customer_id=current_user.customer_id,
+        **ticket_dict,
         created_by=current_user.id
     )
     db.add(ticket)
