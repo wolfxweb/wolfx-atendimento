@@ -536,7 +536,7 @@ export default function TicketForm() {
               <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
                 <div className="col-span-4">
                   <label className={labelClass}>Produto</label>
-                  <select value={newProdId} onChange={e => { setNewProdId(e.target.value); setProdError(''); }} className={inputClass}>
+                  <select value={newProdId} onChange={e => { setNewProdId(e.target.value); setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; select.value = options[idx].value; select.dispatchEvent(new Event('change', { bubbles: true })); } } }} className={inputClass}>
                     <option value="">Selecionar produto</option>
                     {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} - {formatBRL(parseFloat(p.price) || 0)}</option>)}
                   </select>
@@ -599,7 +599,7 @@ export default function TicketForm() {
               <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200">
                 <div>
                   <label className={labelClass}>Colaborador</label>
-                  <select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); setCollabError(''); }} className={inputClass}>
+                  <select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; select.value = options[idx].value; select.dispatchEvent(new Event('change', { bubbles: true })); } } }} className={inputClass}>
                     <option value="">Selecionar</option>
                     {collaboratorsOptions.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Colaborador'})</option>)}
                   </select>
