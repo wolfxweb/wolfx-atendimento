@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/Layout';
@@ -94,6 +94,10 @@ export default function TicketForm() {
   const [ticketRelations, setTicketRelations] = useState<TicketRelation[]>([]);
   const [newRelTicketId, setNewRelTicketId] = useState('');
   const [showRelForm, setShowRelForm] = useState(false);
+
+  // Refs to capture keyboard-selected values (synchronous, no React batching issues)
+  const pendingProdIdRef = useRef('');
+  const pendingCollabUserIdRef = useRef('');
   // For new tickets (not yet saved), store pending relations
   const [pendingRelations, setPendingRelations] = useState<TicketRelation[]>([]);
 
@@ -248,15 +252,17 @@ export default function TicketForm() {
   };
 
   const addCollaborator = () => {
-    if (!newCollabUserId) {
+    // Use keyboard-selected value from ref if state not yet updated (React batching)
+    const userId = newCollabUserId || pendingCollabUserIdRef.current;
+    if (!userId) {
       setCollabError('Selecione um colaborador.');
       return;
     }
-    const user = (users as any[]).find((u: any) => u.id === newCollabUserId);
+    const user = (users as any[]).find((u: any) => u.id === userId);
     const newCollab: TicketCollaborator = {
       id: `temp-${Date.now()}`,
       ticket_id: id || '',
-      user_id: newCollabUserId,
+      user_id: userId,
       user_name: user?.name || '',
       hours_spent: newCollabHours,
       minutes_spent: newCollabMinutes,
@@ -264,6 +270,7 @@ export default function TicketForm() {
     };
     setCollaborators([...collaborators, newCollab]);
     setNewCollabUserId('');
+    pendingCollabUserIdRef.current = '';
     setNewCollabHours(0);
     setNewCollabMinutes(0);
     setNewCollabNotes('');
@@ -279,20 +286,20 @@ export default function TicketForm() {
   };
 
   const addProduct = () => {
-    if (!newProdId) {
-      setProdError('Selecione um produto.');
-      return;
-    }
-    const prod = (products as any[]).find((p: any) => p.id === newProdId);
+    // Use keyboard-selected value from ref if state not yet updated (React batching)
+    const prodId = newProdId || pendingProdIdRef.current;
+    if (!prodId) { setProdError('Selecione um produto.'); return; }
+    const prod = (products as any[]).find((p: any) => p.id === prodId);
     const newTp: TicketProduct = {
       id: `temp-${Date.now()}`,
       ticket_id: id || '',
-      product_id: newProdId,
+      product_id: prodId,
       product_name: prod?.name || '',
       quantity: newProdQty,
     };
     setTicketProducts([...ticketProducts, newTp]);
     setNewProdId('');
+    pendingProdIdRef.current = '';
     setNewProdQty(1);
     setShowProdForm(false);
   };
@@ -536,7 +543,7 @@ export default function TicketForm() {
               <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
                 <div className="col-span-4">
                   <label className={labelClass}>Produto</label>
-                  <select value={newProdId} onChange={e => { setNewProdId(e.target.value); setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; select.value = options[idx].value; select.dispatchEvent(new Event('change', { bubbles: true })); } } }} className={inputClass}>
+                  <select value={newProdId} onChange={e => { setNewProdId(e.target.value); pendingProdIdRef.current = e.target.value; setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; const val = options[idx].value; pendingProdIdRef.current = val; setNewProdId(val); setProdError(''); } } }} className={inputClass}>
                     <option value="">Selecionar produto</option>
                     {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} - {formatBRL(parseFloat(p.price) || 0)}</option>)}
                   </select>
@@ -599,7 +606,7 @@ export default function TicketForm() {
               <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200">
                 <div>
                   <label className={labelClass}>Colaborador</label>
-                  <select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; select.value = options[idx].value; select.dispatchEvent(new Event('change', { bubbles: true })); } } }} className={inputClass}>
+                  <select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); pendingCollabUserIdRef.current = e.target.value; setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; const val = options[idx].value; pendingCollabUserIdRef.current = val; setNewCollabUserId(val); setCollabError(''); } } }} className={inputClass}>
                     <option value="">Selecionar</option>
                     {collaboratorsOptions.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Colaborador'})</option>)}
                   </select>
