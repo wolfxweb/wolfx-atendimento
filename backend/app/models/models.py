@@ -2,10 +2,10 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime, ForeignKey,
-    Numeric, Integer, JSON, Enum as SAEnum
+    Numeric, Integer, JSON, Enum as SAEnum, Date
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 import enum
 
 from app.database import Base
@@ -65,8 +65,16 @@ class Customer(Base):
     document = Column(String(50), nullable=True)
     phone = Column(String(20), nullable=True)
     email = Column(String(255), nullable=True)
-    address = Column(Text, nullable=True)
+    # Address fields (all nullable)
+    address_street = Column(String(255), nullable=True)
+    address_number = Column(String(20), nullable=True)
+    address_complement = Column(String(100), nullable=True)
+    address_district = Column(String(100), nullable=True)
+    address_city = Column(String(100), nullable=True)
+    address_state = Column(String(100), nullable=True)
+    address_zip = Column(String(20), nullable=True)
     is_active = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -74,6 +82,7 @@ class Customer(Base):
     users = relationship("User", back_populates="customer")
     products = relationship("Product", back_populates="customer")
     tickets = relationship("Ticket", back_populates="customer")
+    parts = relationship("Part", back_populates="customer")
 
 
 # =====================
@@ -94,6 +103,26 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # HR fields (nullable)
+    birth_date = Column(Date, nullable=True)
+    cpf = Column(String(20), nullable=True)
+    rg = Column(String(20), nullable=True)
+    gender = Column(String(20), nullable=True)
+    marital_status = Column(String(20), nullable=True)
+    address_street = Column(String(255), nullable=True)
+    address_city = Column(String(100), nullable=True)
+    address_state = Column(String(100), nullable=True)
+    address_zip = Column(String(20), nullable=True)
+    emergency_contact_name = Column(String(100), nullable=True)
+    emergency_contact_phone = Column(String(20), nullable=True)
+    emergency_contact_relation = Column(String(50), nullable=True)
+    position = Column(String(100), nullable=True)
+    department = Column(String(100), nullable=True)
+    hire_date = Column(Date, nullable=True)
+    salary = Column(Numeric(12, 2), nullable=True)
+    work_shift = Column(String(50), nullable=True)
+    notes = Column(Text, nullable=True)
 
     # Relacionamentos
     customer = relationship("Customer", back_populates="users")
@@ -158,6 +187,20 @@ class Product(Base):
     description = Column(Text, nullable=True)
     images = Column(JSON, default=list)
     price = Column(Numeric(10, 2), nullable=True)
+    cost_price = Column(Numeric(10, 2), nullable=True)          # preço de custo
+    brand = Column(String(100), nullable=True)                   # marca
+    model = Column(String(100), nullable=True)                   # modelo
+    barcode = Column(String(50), nullable=True)                   # código de barras
+    stock_quantity = Column(Integer, default=0)                 # quantidade em stock
+    min_stock = Column(Integer, nullable=True)                   # alerta stock mínimo
+    weight = Column(Numeric(8, 3), nullable=True)               # peso em kg
+    dimensions = Column(String(50), nullable=True)               # LxAxP cm
+    warranty_months = Column(Integer, nullable=True)            # meses de garantia
+    supplier = Column(String(200), nullable=True)                # fornecedor
+    product_url = Column(String(500), nullable=True)             # url do produto
+    notes = Column(Text, nullable=True)                          # notas internas
+    tax_rate = Column(Numeric(5, 2), nullable=True)             # taxa de imposto %
+    is_active = Column(Boolean, default=True)                   # produto activo
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -165,10 +208,124 @@ class Product(Base):
     customer = relationship("Customer", back_populates="products")
     category = relationship("Category", back_populates="products")
     tickets = relationship("Ticket", back_populates="product")
+    product_parts = relationship("ProductPart", back_populates="product")
+    compositions = relationship("ProductComposition", back_populates="product", foreign_keys="ProductComposition.product_id")
+
+
+# =====================
+# PART
+# =====================
+class Part(Base):
+    __tablename__ = "parts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False)
+    name = Column(String(200), nullable=False)
+    sku = Column(String(50), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    cost_price = Column(Numeric(10, 2), nullable=False)       # preço de custo
+    sale_price = Column(Numeric(10, 2), nullable=False)         # preço de venda
+    estimated_time = Column(Integer, nullable=True)             # tempo estimado em minutos
+    image = Column(String(500), nullable=True)                  # URL da imagem
+    is_kit = Column(Boolean, default=False)                   # se é um kit
+    parent_part_id = Column(UUID(as_uuid=True), ForeignKey("parts.id"), nullable=True)  # peça pai (se for kit)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relacionamentos
+    parent = relationship("Part", remote_side="Part.id", back_populates="children", foreign_keys=[parent_part_id])
+    children = relationship("Part", back_populates="parent", foreign_keys=[parent_part_id])
+    product_parts = relationship("ProductPart", back_populates="part")
+    customer = relationship("Customer", back_populates="parts")
+
+
+# =====================
+# PRODUCT PART (junction table)
+# =====================
+class ProductPart(Base):
+    __tablename__ = "product_parts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    part_id = Column(UUID(as_uuid=True), ForeignKey("parts.id"), nullable=False)
+    quantity = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relacionamentos
+    product = relationship("Product", back_populates="product_parts")
+    part = relationship("Part", back_populates="product_parts")
+
+
+# =====================
+# PRODUCT COMPOSITION (product composed of other products)
+# =====================
+class ProductComposition(Base):
+    __tablename__ = "product_compositions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    component_product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    quantity = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relacionamentos
+    product = relationship("Product", back_populates="compositions", foreign_keys=[product_id])
+    component_product = relationship("Product", foreign_keys=[component_product_id])
 
 
 # =====================
 # TICKET
+# =====================
+class TicketRelation(Base):
+    __tablename__ = "ticket_relations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
+    target_ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    source_ticket = relationship("Ticket", back_populates="ticket_relations", foreign_keys=[source_ticket_id])
+
+
+# =====================
+# TICKET COLLABORATOR
+# =====================
+class TicketCollaborator(Base):
+    __tablename__ = "ticket_collaborators"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    hours_spent = Column(Integer, default=0)
+    minutes_spent = Column(Integer, default=0)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    ticket = relationship("Ticket", back_populates="ticket_collaborators")
+    user = relationship("User")
+
+
+# =====================
+# TICKET PRODUCT
+# =====================
+class TicketProduct(Base):
+    __tablename__ = "ticket_products"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    quantity = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    ticket = relationship("Ticket", back_populates="ticket_products")
+    product = relationship("Product")
+
+
+# =====================
+# COMMENT
 # =====================
 class Ticket(Base):
     __tablename__ = "tickets"
@@ -192,19 +349,29 @@ class Ticket(Base):
     resolution_summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Novas colunas para hierarquia e controle de tempo
+    parent_ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=True)
+    opened_at = Column(DateTime, nullable=True)
+    attended_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
 
     # Relacionamentos
     customer = relationship("Customer", back_populates="tickets")
+    parent_ticket = relationship("Ticket", remote_side=[id], backref="child_tickets")
+    ticket_collaborators = relationship("TicketCollaborator", back_populates="ticket", cascade="all, delete-orphan")
+    ticket_products = relationship("TicketProduct", back_populates="ticket", cascade="all, delete-orphan")
     creator = relationship("User", back_populates="tickets_created", foreign_keys=[created_by])
     agent = relationship("User", back_populates="assigned_tickets", foreign_keys=[agent_id])
     product = relationship("Product", back_populates="tickets")
     category = relationship("Category", back_populates="tickets")
     comments = relationship("Comment", back_populates="ticket", order_by="Comment.created_at")
     approvals = relationship("TicketApproval", back_populates="ticket")
+    ticket_relations = relationship("TicketRelation", back_populates="source_ticket", cascade="all, delete-orphan", foreign_keys=[TicketRelation.source_ticket_id])
 
 
 # =====================
-# COMMENT
+# TICKET RELATIONS
 # =====================
 class Comment(Base):
     __tablename__ = "comments"
@@ -246,6 +413,7 @@ class MenuItem(Base):
     __tablename__ = "menu_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("menu_items.id"), nullable=True)  # hierarchy support
     category = Column(String(100), nullable=False)  # e.g. "Gestao", "Configuracoes"
     title = Column(String(200), nullable=False)     # e.g. "Tickets", "Clientes"
     href = Column(String(500), nullable=False)      # e.g. "/admin/tickets"
@@ -254,6 +422,9 @@ class MenuItem(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Self-referential relationship for sub-items
+    children = relationship("MenuItem", backref=backref("parent", remote_side=[id]), foreign_keys=[parent_id])
 
 
 # =====================
