@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { extractErrorMessage } from '../api/client';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -18,7 +19,7 @@ export default function LoginPage() {
       // Use window.location for reliable redirect in all environments
       window.location.href = `/${userData.role}`;
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Check credentials.');
+      setError(extractErrorMessage(err) || 'Login failed. Check credentials.');
     } finally {
       setIsLoading(false);
     }

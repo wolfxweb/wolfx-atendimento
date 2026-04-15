@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { createTicket, getCategories } from '../../api/client';
+import { createTicket, getCategories, extractErrorMessage } from '../../api/client';
 import SearchableSelect from '../../components/SearchableSelect';
 
 export default function CustomerNewTicket() {
@@ -104,7 +104,7 @@ export default function CustomerNewTicket() {
 
             {mutation.error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {(mutation.error as any).response?.data?.detail || 'Erro ao criar ticket'}
+                {mutation.error ? extractErrorMessage(mutation.error) : null}
               </div>
             )}
 

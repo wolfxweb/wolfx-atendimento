@@ -8,6 +8,7 @@ import {
   getTicketCollaborators, addTicketCollaborator, removeTicketCollaborator,
   getTicketProducts, addTicketProduct, removeTicketProduct,
   getTicketRelations, addTicketRelation, removeTicketRelation,
+  extractErrorMessage,
 } from '../../api/client';
 
 interface TicketFormData {
@@ -216,7 +217,7 @@ export default function TicketForm() {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       navigate('/admin/tickets');
     },
-    onError: (err: any) => setError(err?.response?.data?.detail || 'Erro ao criar ticket'),
+    onError: (err: any) => setError(extractErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -225,7 +226,7 @@ export default function TicketForm() {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       navigate('/admin/tickets');
     },
-    onError: (err: any) => setError(err?.response?.data?.detail || 'Erro ao atualizar ticket'),
+    onError: (err: any) => setError(extractErrorMessage(err)),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
