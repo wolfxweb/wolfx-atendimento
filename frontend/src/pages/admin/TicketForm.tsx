@@ -222,7 +222,25 @@ export default function TicketForm() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<TicketFormData> }) => updateTicket(id, data as any),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Save new products (those with temp- id)
+      for (const p of ticketProducts) {
+        if (p.id.startsWith('temp-')) {
+          await addTicketProduct({ ticket_id: id!, product_id: p.product_id, quantity: p.quantity });
+        }
+      }
+      // Save new collaborators (those with temp- id)
+      for (const c of collaborators) {
+        if (c.id.startsWith('temp-')) {
+          await addTicketCollaborator({ ticket_id: id!, user_id: c.user_id, hours_spent: c.hours_spent, minutes_spent: c.minutes_spent, notes: c.notes });
+        }
+      }
+      // Save pending relations
+      for (const rel of pendingRelations) {
+        if (rel.target_ticket_id) {
+          await addTicketRelation({ source_ticket_id: id!, target_ticket_id: rel.target_ticket_id });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       navigate('/admin/tickets');
     },
