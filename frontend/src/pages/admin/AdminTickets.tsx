@@ -1,194 +1,306 @@
 import { useState } from 'react';
-import Layout from '../../components/Layout';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getTickets, updateTicket, createTicket, getCustomers, getCategories } from '../../api/client';
+import Layout from '../../components/Layout';
+import Modal from '../../components/Modal';
+import {
+  getTickets, getCustomers, bulkDeleteTickets, deleteTicket,
+} from '../../api/client';
+
+interface Ticket {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  customer_id: string;
+  agent_id?: string;
+  parent_ticket_id?: string;
+  opened_at?: string;
+  attended_at?: string;
+  closed_at?: string;
+  sla_status?: string;
+  created_at: string;
+}
+
+const PRIORITY_LABELS: Record<string, string> = {
+  low: 'Baixa',
+  normal: 'Normal',
+  high: 'Alta',
+  urgent: 'Urgente',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Aberto',
+  pending: 'Pendente',
+  in_progress: 'Em Atendimento',
+  solved: 'Resolvido',
+  closed: 'Fechado',
+  reopened: 'Reaberto',
+};
+
+const SLA_LABELS: Record<string, string> = {
+  within: 'No Prazo',
+  at_risk: 'Em Risco',
+  breached: 'Estourado',
+};
 
 export default function AdminTickets() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [searchName, setSearchName] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [ticketToDelete, setTicketToDelete] = useState<Ticket | null>(null);
 
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', priority: 'normal', customer_id: '', category_id: '' });
-  const [error, setError] = useState('');
-
-  const { data: ticketsData, isLoading } = useQuery({
+  const { data: tickets = [], isLoading } = useQuery({
     queryKey: ['tickets'],
-    queryFn: () => getTickets().then(r => r.data),
+    queryFn: () => getTickets().then(r => r.data as Ticket[]),
   });
 
-  const { data: customers } = useQuery({
+  const { data: customers = [] } = useQuery({
     queryKey: ['customers'],
-    queryFn: () => getCustomers().then(r => r.data),
+    queryFn: () => getCustomers().then(r => r.data as any[]),
   });
 
-  const { data: categories } = useQuery({
-    queryKey: ['categories', 'ticket'],
-    queryFn: () => getCategories('ticket').then(r => r.data),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: createTicket,
+  const deleteMutation = useMutation({
+    mutationFn: deleteTicket,
     onSuccess: () => {
-      setForm({ title: '', description: '', priority: 'normal', customer_id: '', category_id: '' });
-      setShowForm(false);
-      setError('');
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      setTicketToDelete(null);
     },
-    onError: (err: any) => setError(err?.response?.data?.detail || 'Erro ao criar ticket'),
   });
 
-  const tickets = ticketsData || [];
-
-  const assignMutation = useMutation({
-    mutationFn: ({ id, agentId }: { id: string; agentId: string }) => updateTicket(id, { agent_id: agentId }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+  const bulkDeleteMutation = useMutation({
+    mutationFn: bulkDeleteTickets,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      setSelected(new Set());
+    },
   });
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => updateTicket(id, { status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+  const filtered = tickets.filter(t => {
+    if (searchName && !t.title.toLowerCase().includes(searchName.toLowerCase())) return false;
+    if (filterStatus && t.status !== filterStatus) return false;
+    return true;
   });
+
+  const getCustomerName = (id: string) => {
+    const c = (customers as any[]).find((cu: any) => cu.id === id);
+    return c?.name || id.slice(0, 8);
+  };
+
+  const formatDate = (d?: string) => {
+    if (!d) return '—';
+    const date = new Date(d);
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  const formatDateTime = (d?: string) => {
+    if (!d) return '—';
+    const date = new Date(d);
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(t => t.id)));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
+
+  const handleBulkDelete = () => {
+    if (!confirm(`Eliminar ${selected.size} ticket(s) selecionado(s)?`)) return;
+    bulkDeleteMutation.mutate(Array.from(selected));
+  };
+
+  const priorityColor = (p: string) => {
+    if (p === 'urgent') return 'bg-red-100 text-red-700';
+    if (p === 'high') return 'bg-orange-100 text-orange-700';
+    return 'bg-gray-100 text-gray-600';
+  };
+
+  const statusColor = (s: string) => {
+    if (s === 'open') return 'bg-blue-100 text-blue-700';
+    if (s === 'pending') return 'bg-yellow-100 text-yellow-700';
+    if (s === 'in_progress') return 'bg-indigo-100 text-indigo-700';
+    if (s === 'solved') return 'bg-green-100 text-green-700';
+    if (s === 'closed') return 'bg-gray-100 text-gray-500';
+    if (s === 'reopened') return 'bg-purple-100 text-purple-700';
+    return 'bg-gray-100 text-gray-600';
+  };
 
   return (
     <Layout>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Gestão de Tickets</h2>
-          <button
-            onClick={() => setShowForm(v => !v)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium"
-          >
-            {showForm ? 'Cancelar' : '+ Novo Ticket'}
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">Tickets</h2>
+        <button
+          onClick={() => navigate('/admin/tickets/new')}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium"
+        >
+          + Novo Ticket
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-3 mb-4">
+        <div className="relative flex-1 max-w-md">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input type="text" value={searchName} onChange={e => setSearchName(e.target.value)}
+            placeholder="Pesquisar ticket..."
+            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-full" />
+        </div>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <option value="">Todos os status</option>
+          <option value="open">Aberto</option>
+          <option value="pending">Pendente</option>
+          <option value="in_progress">Em Atendimento</option>
+          <option value="solved">Resolvido</option>
+          <option value="closed">Fechado</option>
+          <option value="reopened">Reaberto</option>
+        </select>
+      </div>
+
+      {/* Bulk actions */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+          <span className="text-sm text-red-700 font-medium">{selected.size} selecionado(s)</span>
+          <button onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}
+            className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-red-700 disabled:opacity-50">
+            {bulkDeleteMutation.isPending ? 'A eliminar...' : 'Eliminar Selecionados'}
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-gray-500 text-sm hover:underline">
+            Cancelar
           </button>
         </div>
+      )}
 
-        {/* Create Ticket Form */}
-        {showForm && (
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6 border border-indigo-100">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Criar Novo Ticket</h3>
-            {error && <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg mb-4 text-sm">{error}</div>}
-            <form onSubmit={e => { e.preventDefault(); setError(''); if (!form.title || !form.description || !form.customer_id) { setError('Preenche título, descrição e cliente.'); return; } createMutation.mutate(form); }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                <select value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
-                  <option value="">Selecionar cliente</option>
-                  {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
-                <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="low">Baixa</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">Alta</option>
-                  <option value="urgent">Urgente</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">Sem categoria</option>
-                  {(categories || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
-                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Resumo do problema" required />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição *</label>
-                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Descrição detalhada do problema..." required />
-              </div>
-              <div className="md:col-span-2">
-                <button type="submit" disabled={createMutation.isPending}
-                  className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50">
-                  {createMutation.isPending ? 'A criar...' : 'Criar Ticket'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="text-center py-12">Carregando...</div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Ticket</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Estado</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Prioridade</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">SLA</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Acções</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {tickets.map((ticket: any) => (
-                  <tr key={ticket.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-gray-800">{ticket.title}</p>
-                      <p className="text-sm text-gray-500">{ticket.customer_id?.slice(0, 8)}...</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <select
-                        value={ticket.status}
-                        onChange={(e) => statusMutation.mutate({ id: ticket.id, status: e.target.value })}
-                        className="text-xs border rounded px-2 py-1"
-                      >
-                        <option value="open">Aberto</option>
-                        <option value="in_progress">Em Progresso</option>
-                        <option value="pending">Pendente</option>
-                        <option value="solved">Resolvido</option>
-                        <option value="closed">Fechado</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        ticket.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                        ticket.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {ticket.priority}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        ticket.sla_status === 'within' ? 'bg-green-100 text-green-700' :
-                        ticket.sla_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700' :
-                        ticket.sla_status === 'breached' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {ticket.sla_status || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {ticket.agent_id ? (
-                        <span className="text-xs text-gray-500">Atribuído</span>
-                      ) : (
+      {/* Table */}
+      {isLoading ? (
+        <div className="text-center py-12 text-gray-500">Carregando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <p className="text-gray-500">Nenhum ticket encontrado.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-3 py-3">
+                  <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
+                    onChange={toggleAll} className="rounded" />
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Ticket</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Cliente</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Prioridade</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">SLA</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Abertura</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Atendimento</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Fechamento</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Ticket Pai</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filtered.map(t => (
+                <tr key={t.id} className={`hover:bg-gray-50 ${selected.has(t.id) ? 'bg-indigo-50' : ''}`}>
+                  <td className="px-3 py-3">
+                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleOne(t.id)} className="rounded" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-800 text-sm">{t.title}</p>
+                    <p className="text-xs text-gray-400">{t.id.slice(0, 8)}...</p>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{getCustomerName(t.customer_id)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor(t.status)}`}>
+                      {STATUS_LABELS[t.status] || t.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityColor(t.priority)}`}>
+                      {PRIORITY_LABELS[t.priority] || t.priority}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      t.sla_status === 'within' ? 'bg-green-100 text-green-700' :
+                      t.sla_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700' :
+                      t.sla_status === 'breached' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {SLA_LABELS[t.sla_status || ''] || (t.sla_status ? t.sla_status : '—')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{formatDate(t.opened_at || t.created_at)}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{formatDateTime(t.attended_at)}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{formatDateTime(t.closed_at)}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{t.parent_ticket_id ? t.parent_ticket_id.slice(0, 8) + '...' : '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end">
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
                         <button
-                          onClick={() => {
-                            const agentId = prompt('ID do agente:');
-                            if (agentId) assignMutation.mutate({ id: ticket.id, agentId });
-                          }}
-                          className="text-xs text-indigo-600 hover:underline"
+                          onClick={() => navigate(`/admin/tickets/${t.id}/edit`)}
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          title="Editar"
                         >
-                          Atribuir
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <div className="w-px h-5 bg-gray-200" />
+                        <button
+                          onClick={() => setTicketToDelete(t)}
+                          className="p-2 text-red-600 hover:bg-red-50 transition-colors"
+                          title="Eliminar"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {ticketToDelete && (
+        <Modal isOpen={true} onClose={() => setTicketToDelete(null)} title="Confirmar Eliminação" size="sm">
+          <div className="text-center">
+            <p className="text-gray-600 mb-6">
+              Tem a certeza que deseja eliminar o ticket <strong>{ticketToDelete.title}</strong>?
+            </p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setTicketToDelete(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(ticketToDelete.id)}
+                disabled={deleteMutation.isPending}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? 'A eliminar...' : 'Eliminar'}
+              </button>
+            </div>
           </div>
-        )}
+        </Modal>
+      )}
     </Layout>
   );
 }

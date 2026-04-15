@@ -59,7 +59,26 @@ async def create_user(
         role=user_data.role,
         customer_id=user_data.customer_id,
         phone=user_data.phone,
-        is_active=True
+        is_active=True,
+        # HR fields
+        birth_date=user_data.birth_date,
+        cpf=user_data.cpf,
+        rg=user_data.rg,
+        gender=user_data.gender,
+        marital_status=user_data.marital_status,
+        address_street=user_data.address_street,
+        address_city=user_data.address_city,
+        address_state=user_data.address_state,
+        address_zip=user_data.address_zip,
+        emergency_contact_name=user_data.emergency_contact_name,
+        emergency_contact_phone=user_data.emergency_contact_phone,
+        emergency_contact_relation=user_data.emergency_contact_relation,
+        position=user_data.position,
+        department=user_data.department,
+        hire_date=user_data.hire_date,
+        salary=user_data.salary,
+        work_shift=user_data.work_shift,
+        notes=user_data.notes,
     )
     db.add(user)
     db.commit()
@@ -157,7 +176,27 @@ async def create_user_for_customer(
         password_hash=get_password_hash(user_data.password),
         name=user_data.name,
         role=user_data.role,
-        is_active=True
+        phone=user_data.phone,
+        is_active=True,
+        # HR fields
+        birth_date=user_data.birth_date,
+        cpf=user_data.cpf,
+        rg=user_data.rg,
+        gender=user_data.gender,
+        marital_status=user_data.marital_status,
+        address_street=user_data.address_street,
+        address_city=user_data.address_city,
+        address_state=user_data.address_state,
+        address_zip=user_data.address_zip,
+        emergency_contact_name=user_data.emergency_contact_name,
+        emergency_contact_phone=user_data.emergency_contact_phone,
+        emergency_contact_relation=user_data.emergency_contact_relation,
+        position=user_data.position,
+        department=user_data.department,
+        hire_date=user_data.hire_date,
+        salary=user_data.salary,
+        work_shift=user_data.work_shift,
+        notes=user_data.notes,
     )
     db.add(user)
     db.commit()

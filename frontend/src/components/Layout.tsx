@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
+import { useSidebar } from '../context/SidebarContext';
 
 interface LayoutProps {
   children: ReactNode;
@@ -8,6 +9,7 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const { logout, user } = useAuth();
+  const { collapsed } = useSidebar();
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -15,9 +17,10 @@ export default function Layout({ children }: LayoutProps) {
       <Sidebar />
 
       {/* Main Content */}
-      <div className="flex-1 ml-64">
+      <div className={`flex-1 transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-64'}`}>
         {/* Top bar */}
-        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6 fixed top-0 right-0 left-64 z-10">
+        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6 fixed top-0 right-0 z-10"
+          style={{ left: collapsed ? '4rem' : '16rem' }}>
           <div className="text-sm text-gray-500">
             Bem-vindo, <span className="font-medium text-gray-700">{user?.email || 'Admin'}</span>
           </div>

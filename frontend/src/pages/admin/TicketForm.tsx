@@ -270,9 +270,9 @@ export default function TicketForm() {
       ...form,
       category_id: form.category_id || undefined,
       parent_ticket_id: form.parent_ticket_id || undefined,
-      // opened_at não é enviado - é definido automaticamente na criação e não pode ser alterado
-      attended_at: form.attended_at ? new Date(form.attended_at).toISOString() : undefined,
-      closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : undefined,
+      // opened_at não é enviado - é definido automaticamente na criação
+      attended_at: form.attended_at && form.attended_at.length >= 16 ? new Date(form.attended_at).toISOString() : undefined,
+      closed_at: form.closed_at && form.closed_at.length >= 16 ? new Date(form.closed_at).toISOString() : undefined,
     };
 
     if (isEdit) {

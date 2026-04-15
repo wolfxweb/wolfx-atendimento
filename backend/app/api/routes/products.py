@@ -55,7 +55,7 @@ async def list_products(
             (Product.sku.ilike(f"%{search}%"))
         )
     
-    products = query.offset(skip).limit(limit).all()
+    products = query.order_by(Product.id.desc()).offset(skip).limit(limit).all()
     return products
 
 
@@ -65,13 +65,46 @@ async def create_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Verificar SKU único
-    existing = db.query(Product).filter(Product.sku == product_data.sku).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="SKU already exists")
-    
+    import re
+    import random
+    import string
+
+    # Gerar SKU automático a partir do nome se não fornecido
+    if not product_data.sku:
+        # Criar base do SKU: primeiro 3 chars do nome em maiúsculas, sem espaços
+        name_part = re.sub(r'[^a-zA-Z0-9]', '', product_data.name)[:4].upper()
+        random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        sku = f"{name_part}-{random_part}"
+    else:
+        sku = product_data.sku
+
+    # Garantir que SKU é único (adicionar sufixo se necessário)
+    base_sku = sku
+    counter = 1
+    while db.query(Product).filter(Product.sku == sku).first():
+        sku = f"{base_sku}-{counter}"
+        counter += 1
+
     product = Product(
-        **product_data.model_dump(),
+        name=product_data.name,
+        sku=sku,
+        description=product_data.description,
+        category_id=product_data.category_id,
+        price=product_data.price,
+        cost_price=product_data.cost_price,
+        brand=product_data.brand,
+        model=product_data.model,
+        barcode=product_data.barcode,
+        stock_quantity=product_data.stock_quantity or 0,
+        min_stock=product_data.min_stock,
+        weight=product_data.weight,
+        dimensions=product_data.dimensions,
+        warranty_months=product_data.warranty_months,
+        supplier=product_data.supplier,
+        product_url=product_data.product_url,
+        notes=product_data.notes,
+        tax_rate=product_data.tax_rate,
+        is_active=product_data.is_active if product_data.is_active is not None else True,
         customer_id=current_user.customer_id
     )
     db.add(product)

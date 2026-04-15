@@ -1,4 +1,5 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
@@ -6,6 +7,16 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+
+# Configure logging so our route logs appear in container stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+# Suppress noisy third-party loggers
+for noisy in ["uvicorn.access", "uvicorn.error", "sqlalchemy.engine"]:
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 from app.config import settings
 from app.database import engine, Base, SessionLocal, get_db
@@ -213,7 +224,10 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Include routers
-from app.api.routes import auth, customers, users, agents, categories, products, tickets, sla, telegram_webhook, menu
+from app.api.routes import auth, customers, users, agents, categories, products, tickets, sla, telegram_webhook, menu, parts, product_parts, product_compositions
+from app.api.routes.ticket_collaborators import router as ticket_collaborators_router
+from app.api.routes.ticket_products import router as ticket_products_router
+from app.api.routes.ticket_relations import router as ticket_relations_router
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
@@ -221,7 +235,13 @@ app.include_router(users.router, prefix=settings.API_V1_PREFIX, tags=["users"])
 app.include_router(agents.router, prefix=settings.API_V1_PREFIX, tags=["agents"])
 app.include_router(categories.router, prefix=settings.API_V1_PREFIX, tags=["categories"])
 app.include_router(products.router, prefix=settings.API_V1_PREFIX, tags=["products"])
+app.include_router(parts.router, prefix=settings.API_V1_PREFIX, tags=["parts"])
+app.include_router(product_parts.router, prefix=settings.API_V1_PREFIX, tags=["product_parts"])
+app.include_router(product_compositions.router, prefix=settings.API_V1_PREFIX, tags=["product_compositions"])
 app.include_router(tickets.router, prefix=settings.API_V1_PREFIX, tags=["tickets"])
+app.include_router(ticket_collaborators_router, prefix=settings.API_V1_PREFIX, tags=["ticket_collaborators"])
+app.include_router(ticket_products_router, prefix=settings.API_V1_PREFIX, tags=["ticket_products"])
+app.include_router(ticket_relations_router, prefix=settings.API_V1_PREFIX, tags=["ticket_relations"])
 app.include_router(sla.router, prefix=settings.API_V1_PREFIX, tags=["sla"])
 app.include_router(telegram_webhook.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
 app.include_router(menu.router, prefix=settings.API_V1_PREFIX, tags=["menu"])

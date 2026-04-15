@@ -13,6 +13,7 @@ router = APIRouter(prefix="/menu", tags=["menu"])
 def menu_item_to_response(item: MenuItem) -> MenuItemResponse:
     return MenuItemResponse(
         id=item.id,
+        parent_id=item.parent_id,
         category=item.category,
         title=item.title,
         href=item.href,
@@ -40,6 +41,7 @@ def create_menu_item(data: MenuItemCreate, db: Session = Depends(get_db)):
         href=data.href,
         icon=data.icon,
         order=data.order,
+        parent_id=data.parent_id,
     )
     db.add(item)
     db.commit()
