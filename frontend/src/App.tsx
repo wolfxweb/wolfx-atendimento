@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { SidebarProvider } from './context/SidebarContext';
 import LoginPage from './pages/LoginPage';
 import CustomerDashboard from './pages/customer/Dashboard';
 import CustomerTickets from './pages/customer/Tickets';
@@ -11,8 +12,13 @@ import AgentTickets from './pages/agent/Tickets';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminTickets from './pages/admin/AdminTickets';
 import AdminCustomers from './pages/admin/Customers';
-import AdminAgents from './pages/admin/Agents';
+import CustomerForm from './pages/admin/CustomerForm';
+import TicketForm from './pages/admin/TicketForm';
+import NewTicketPage from './pages/admin/NewTicketPage';
+import AdminColaboradores from './pages/admin/AdminColaboradores';
+import ColaboradorForm from './pages/admin/ColaboradorForm';
 import AdminProducts from './pages/admin/Products';
+import ProductForm from './pages/admin/ProductForm';
 import AdminSLAs from './pages/admin/SLAs';
 import AdminCategories from './pages/admin/Categories';
 import CustomerProducts from './pages/customer/Products';
@@ -90,14 +96,41 @@ function AppRoutes() {
       <Route path="/admin/tickets" element={
         <ProtectedRoute roles={['admin']}><AdminTickets /></ProtectedRoute>
       } />
-      <Route path="/admin/customers" element={
+      <Route path="/admin/tickets/new" element={
+        <ProtectedRoute roles={['admin']}><NewTicketPage /></ProtectedRoute>
+      } />
+      <Route path="/admin/tickets/:id/edit" element={
+        <ProtectedRoute roles={['admin']}><TicketForm /></ProtectedRoute>
+      } />
+      <Route path="/admin/tickets/:id" element={
+        <ProtectedRoute roles={['admin']}><TicketForm /></ProtectedRoute>
+      } />
+      <Route path="/admin/clientes" element={
         <ProtectedRoute roles={['admin']}><AdminCustomers /></ProtectedRoute>
       } />
-      <Route path="/admin/agents" element={
-        <ProtectedRoute roles={['admin']}><AdminAgents /></ProtectedRoute>
+      <Route path="/admin/clientes/new" element={
+        <ProtectedRoute roles={['admin']}><CustomerForm /></ProtectedRoute>
+      } />
+      <Route path="/admin/clientes/:id/edit" element={
+        <ProtectedRoute roles={['admin']}><CustomerForm /></ProtectedRoute>
+      } />
+      <Route path="/admin/colaboradores" element={
+        <ProtectedRoute roles={['admin']}><AdminColaboradores /></ProtectedRoute>
+      } />
+      <Route path="/admin/colaboradores/new" element={
+        <ProtectedRoute roles={['admin']}><ColaboradorForm /></ProtectedRoute>
+      } />
+      <Route path="/admin/colaboradores/:id/edit" element={
+        <ProtectedRoute roles={['admin']}><ColaboradorForm /></ProtectedRoute>
       } />
       <Route path="/admin/products" element={
         <ProtectedRoute roles={['admin']}><AdminProducts /></ProtectedRoute>
+      } />
+      <Route path="/admin/products/new" element={
+        <ProtectedRoute roles={['admin']}><ProductForm /></ProtectedRoute>
+      } />
+      <Route path="/admin/products/:id/edit" element={
+        <ProtectedRoute roles={['admin']}><ProductForm /></ProtectedRoute>
       } />
       <Route path="/admin/slas" element={
         <ProtectedRoute roles={['admin']}><AdminSLAs /></ProtectedRoute>
@@ -116,7 +149,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <SidebarProvider>
+            <AppRoutes />
+          </SidebarProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
