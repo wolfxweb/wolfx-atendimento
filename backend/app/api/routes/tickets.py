@@ -136,7 +136,14 @@ async def update_ticket(
     if current_user.role == "agent" and ticket.agent_id != current_user.id:
         raise HTTPException(status_code=403, detail="Ticket assigned to another agent")
     
-    for key, value in ticket_data.model_dump(exclude_unset=True).items():
+    update_dict = ticket_data.model_dump(exclude_unset=True)
+
+    # Se status mudou para closed/solved e closed_at não foi enviado, preencher automaticamente
+    if update_dict.get("status") in (TicketStatus.CLOSED.value, TicketStatus.SOLVED.value):
+        if "closed_at" not in update_dict or update_dict["closed_at"] is None:
+            update_dict["closed_at"] = datetime.utcnow()
+
+    for key, value in update_dict.items():
         setattr(ticket, key, value)
     
     # Se ticket foi marcado como solved, notificar cliente por Telegram

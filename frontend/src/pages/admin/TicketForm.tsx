@@ -534,7 +534,17 @@ export default function TicketForm() {
                 </div>
                 <div>
                   <label className={labelClass}>Status</label>
-                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputClass}>
+                  <select value={form.status} onChange={e => {
+                    const newStatus = e.target.value;
+                    setForm(prev => ({
+                      ...prev,
+                      status: newStatus,
+                      // Se passou a resolved/closed, preencher closed_at automaticamente
+                      ...(newStatus === 'solved' || newStatus === 'closed'
+                        ? { closed_at: new Date().toISOString().slice(0, 16) }
+                        : {})
+                    }));
+                  }} className={inputClass}>
                     <option value="open">Aberto</option><option value="pending">Pendente</option><option value="in_progress">Em Atendimento</option><option value="solved">Resolvido</option><option value="closed">Fechado</option><option value="reopened">Reaberto</option>
                   </select>
                 </div>
