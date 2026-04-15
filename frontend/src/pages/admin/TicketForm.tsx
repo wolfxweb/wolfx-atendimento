@@ -107,6 +107,9 @@ export default function TicketForm() {
   // Relations state
   const [ticketRelations, setTicketRelations] = useState<TicketRelation[]>([]);
   const [newRelTicketId, setNewRelTicketId] = useState('');
+  const [activeTab, setActiveTab] = useState<'dados'|'anexos'|'produtos'|'colaboradores'|'relacoes'|'conversa'>('dados');
+  const [commentText, setCommentText] = useState('');
+  const [isPublicComment, setIsPublicComment] = useState(true);
   const [showRelForm, setShowRelForm] = useState(false);
 
   // Refs to capture keyboard-selected values (synchronous, no React batching issues)
@@ -539,7 +542,36 @@ export default function TicketForm() {
               </h2>
             </div>
 
-            <div className={sectionClass}>
+            {isEdit && id && (
+              <div className="border-b border-gray-200 mb-4">
+                <nav className="flex gap-1 -mb-px">
+                  {[
+                    { key: 'dados', label: 'Dados', icon: '📋' },
+                    { key: 'anexos', label: 'Anexos', icon: '📎' },
+                    { key: 'produtos', label: 'Produtos', icon: '📦' },
+                    { key: 'colaboradores', label: 'Colaboradores', icon: '👤' },
+                    { key: 'relacoes', label: 'Relações', icon: '🔗' },
+                    { key: 'conversa', label: 'Conversa', icon: '💬' },
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveTab(tab.key as any)}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                        activeTab === tab.key
+                          ? 'border-indigo-600 text-indigo-600 bg-indigo-50'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            )}
+
+            <div className={`${sectionClass}${activeTab !== 'dados' ? ' hidden' : ''}`}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Dados do Ticket</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
@@ -612,8 +644,7 @@ export default function TicketForm() {
               </div>
             </div>
 
-            {/* Anexos */}
-            <div className={sectionClass}>
+            <div className={`${sectionClass}${activeTab !== 'anexos' ? ' hidden' : ''}`}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Anexos</h3>
 
               {/* Upload area */}
@@ -755,8 +786,7 @@ export default function TicketForm() {
               {attachmentError && <p className="text-sm text-red-500 mt-2">{attachmentError}</p>}
             </div>
 
-            {/* Produtos */}
-            <div className={sectionClass}>
+            <div className={`${sectionClass}${activeTab !== 'produtos' ? ' hidden' : ''}`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Produtos</h3>
                 {!showProdForm && <button type="button" onClick={() => setShowProdForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar Produto</button>}
@@ -796,7 +826,7 @@ export default function TicketForm() {
             </div>
 
             {/* Colaboradores */}
-            <div className={sectionClass}>
+            <div className={`${sectionClass}${activeTab !== 'colaboradores' ? ' hidden' : ''}`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Colaboradores {collaborators.length > 0 && <span className="ml-2 text-xs font-normal text-gray-500">(Total: {totalHours}h {totalMinutes}min)</span>}</h3>
                 {!showCollabForm && <button type="button" onClick={() => setShowCollabForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar</button>}
@@ -835,7 +865,7 @@ export default function TicketForm() {
             </div>
 
             {/* Tickets Relacionados */}
-            <div className={sectionClass}>
+            <div className={`${sectionClass}${activeTab !== 'relacoes' ? ' hidden' : ''}`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Tickets Relacionados</h3>
                 {!showRelForm && <button type="button" onClick={() => setShowRelForm(true)} className="text-indigo-600 text-sm hover:underline">+ Associar Ticket</button>}
@@ -880,6 +910,48 @@ export default function TicketForm() {
               </button>
             </div>
           </form>
+        )}
+
+        {/* ── CONVERSA TAB ── */}
+        {isEdit && id && (
+          <div className={`${sectionClass}${activeTab !== 'conversa' ? ' hidden' : ''}`}>
+            <h3 className="text-base font-semibold text-gray-800 mb-3">Conversa</h3>
+
+            {/* Add comment */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-3">
+              <textarea
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                placeholder="Escreva uma nota ou comentário..."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none text-sm mb-3"
+              />
+              <div className="flex items-center justify-between">
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={isPublicComment} onChange={() => setIsPublicComment(true)} className="accent-indigo-600" />
+                    <span className="text-gray-600">🌐 Público</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={!isPublicComment} onChange={() => setIsPublicComment(false)} className="accent-yellow-500" />
+                    <span className="text-gray-600">🔒 Interno</span>
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (!commentText.trim()) { alert('Escreva um comentário'); return; } }}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 font-medium"
+                >
+                  Publicar
+                </button>
+              </div>
+            </div>
+
+            {/* Placeholder */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
+              <p className="text-sm text-gray-400">Sem comentários ainda.</p>
+            </div>
+          </div>
         )}
 
         {/* ── WIZARD MODE (step 2-5) ── */}
