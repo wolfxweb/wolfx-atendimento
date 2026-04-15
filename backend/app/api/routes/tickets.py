@@ -87,6 +87,9 @@ async def create_ticket(
     if current_user.role == "admin" and not ticket_dict.get("customer_id"):
         raise HTTPException(status_code=400, detail="Admin must specify customer_id when creating a ticket")
 
+    # Data de abertura é sempre definida automaticamente
+    ticket_dict["opened_at"] = datetime.utcnow()
+
     ticket = Ticket(
         **ticket_dict,
         created_by=current_user.id
@@ -178,6 +181,24 @@ async def delete_ticket(
     db.delete(ticket)
     db.commit()
     return {"message": "Ticket deleted"}
+
+
+@router.post("/tickets/bulk-delete")
+async def bulk_delete_tickets(
+    ticket_ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can bulk delete tickets")
+    
+    for ticket_id in ticket_ids:
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if ticket:
+            db.delete(ticket)
+    
+    db.commit()
+    return {"message": f"{len(ticket_ids)} tickets deleted"}
 
 
 @router.post("/tickets/{ticket_id}/approve", response_model=ApprovalResponse)

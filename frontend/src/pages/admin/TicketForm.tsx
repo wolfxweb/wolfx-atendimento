@@ -270,7 +270,7 @@ export default function TicketForm() {
       ...form,
       category_id: form.category_id || undefined,
       parent_ticket_id: form.parent_ticket_id || undefined,
-      opened_at: form.opened_at ? new Date(form.opened_at).toISOString() : undefined,
+      // opened_at não é enviado - é definido automaticamente na criação e não pode ser alterado
       attended_at: form.attended_at ? new Date(form.attended_at).toISOString() : undefined,
       closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : undefined,
     };
@@ -572,7 +572,7 @@ export default function TicketForm() {
             <div className={sectionClass}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Datas</h3>
               <div className="grid grid-cols-3 gap-4">
-                <div><label className={labelClass}>Data de Abertura</label><input type="datetime-local" value={form.opened_at} onChange={e => setForm({ ...form, opened_at: e.target.value })} className={inputClass} /></div>
+                <div><label className={labelClass}>Data de Abertura</label><input type="datetime-local" value={form.opened_at} disabled className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 text-sm cursor-not-allowed" /></div>
                 <div><label className={labelClass}>Data do Atendimento</label><input type="datetime-local" value={form.attended_at} onChange={e => setForm({ ...form, attended_at: e.target.value })} className={inputClass} /></div>
                 <div><label className={labelClass}>Data de Fechamento</label><input type="datetime-local" value={form.closed_at} onChange={e => setForm({ ...form, closed_at: e.target.value })} className={inputClass} /></div>
               </div>

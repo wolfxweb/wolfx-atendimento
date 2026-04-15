@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Any
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from uuid import UUID
 
 
@@ -15,6 +15,25 @@ class UserCreate(BaseModel):
     customer_id: Optional[UUID] = None
     phone: Optional[str] = None
     telegram_chat_id: Optional[str] = None
+    # HR fields (nullable)
+    birth_date: Optional[date] = None
+    cpf: Optional[str] = None
+    rg: Optional[str] = None
+    gender: Optional[str] = None
+    marital_status: Optional[str] = None
+    address_street: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    hire_date: Optional[date] = None
+    salary: Optional[float] = None
+    work_shift: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -39,7 +58,15 @@ class CustomerCreate(BaseModel):
     document: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    address: Optional[str] = None
+    # Address fields (all nullable)
+    address_street: Optional[str] = None
+    address_number: Optional[str] = None
+    address_complement: Optional[str] = None
+    address_district: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class CustomerUpdate(BaseModel):
@@ -47,8 +74,16 @@ class CustomerUpdate(BaseModel):
     document: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    address: Optional[str] = None
+    # Address fields (all nullable)
+    address_street: Optional[str] = None
+    address_number: Optional[str] = None
+    address_complement: Optional[str] = None
+    address_district: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
     is_active: Optional[bool] = None
+    notes: Optional[str] = None
 
 
 class CustomerResponse(BaseModel):
@@ -57,8 +92,16 @@ class CustomerResponse(BaseModel):
     document: Optional[str]
     phone: Optional[str]
     email: Optional[str]
-    address: Optional[str]
+    # Address fields (all nullable)
+    address_street: Optional[str] = None
+    address_number: Optional[str] = None
+    address_complement: Optional[str] = None
+    address_district: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
     is_active: bool
+    notes: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -77,6 +120,25 @@ class UserResponse(BaseModel):
     phone: Optional[str]
     is_active: bool
     created_at: datetime
+    # HR fields (nullable)
+    birth_date: Optional[date] = None
+    cpf: Optional[str] = None
+    rg: Optional[str] = None
+    gender: Optional[str] = None
+    marital_status: Optional[str] = None
+    address_street: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    hire_date: Optional[date] = None
+    salary: Optional[float] = None
+    work_shift: Optional[str] = None
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -86,6 +148,25 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     is_active: Optional[bool] = None
+    # HR fields (nullable)
+    birth_date: Optional[date] = None
+    cpf: Optional[str] = None
+    rg: Optional[str] = None
+    gender: Optional[str] = None
+    marital_status: Optional[str] = None
+    address_street: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    hire_date: Optional[date] = None
+    salary: Optional[float] = None
+    work_shift: Optional[str] = None
+    notes: Optional[str] = None
 
 
 # =====================
@@ -179,17 +260,46 @@ class CategoryResponse(BaseModel):
 # =====================
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=2)
-    sku: str = Field(..., min_length=1)
+    sku: Optional[str] = Field(None, min_length=1)  # backend auto-generates if None
     description: Optional[str] = None
     category_id: Optional[UUID] = None
     price: Optional[float] = None
+    cost_price: Optional[float] = None
+    brand: Optional[str] = Field(None, max_length=100)
+    model: Optional[str] = Field(None, max_length=100)
+    barcode: Optional[str] = Field(None, max_length=50)
+    stock_quantity: Optional[int] = 0
+    min_stock: Optional[int] = None
+    weight: Optional[float] = None
+    dimensions: Optional[str] = Field(None, max_length=50)
+    warranty_months: Optional[int] = None
+    supplier: Optional[str] = Field(None, max_length=200)
+    product_url: Optional[str] = Field(None, max_length=500)
+    notes: Optional[str] = None
+    tax_rate: Optional[float] = None
+    is_active: Optional[bool] = True
 
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
+    sku: Optional[str] = None
     description: Optional[str] = None
     category_id: Optional[UUID] = None
     price: Optional[float] = None
+    cost_price: Optional[float] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    barcode: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    min_stock: Optional[int] = None
+    weight: Optional[float] = None
+    dimensions: Optional[str] = None
+    warranty_months: Optional[int] = None
+    supplier: Optional[str] = None
+    product_url: Optional[str] = None
+    notes: Optional[str] = None
+    tax_rate: Optional[float] = None
+    is_active: Optional[bool] = None
 
 
 class ProductResponse(BaseModel):
@@ -201,9 +311,151 @@ class ProductResponse(BaseModel):
     description: Optional[str]
     images: List[dict]
     price: Optional[float]
+    cost_price: Optional[float] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    barcode: Optional[str] = None
+    stock_quantity: int = 0
+    min_stock: Optional[int] = None
+    weight: Optional[float] = None
+    dimensions: Optional[str] = None
+    warranty_months: Optional[int] = None
+    supplier: Optional[str] = None
+    product_url: Optional[str] = None
+    notes: Optional[str] = None
+    tax_rate: Optional[float] = None
+    is_active: bool = True
     created_at: datetime
     updated_at: datetime
     category: Optional["CategoryResponse"] = None
+
+    class Config:
+        from_attributes = True
+
+
+# =====================
+# PART
+# =====================
+class PartCreate(BaseModel):
+    name: str = Field(..., min_length=2)
+    sku: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    cost_price: float = Field(..., ge=0)
+    sale_price: float = Field(..., ge=0)
+    estimated_time: Optional[str | int] = None  # DB is int (minutes)
+    image: Optional[str] = None
+    is_kit: bool = False
+    parent_part_id: Optional[UUID] = None
+
+    @field_validator("estimated_time", mode="before")
+    @classmethod
+    def estimate_time_to_int(cls, v):
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            return int(v) if v.strip() else None
+        return v
+
+
+class PartUpdate(BaseModel):
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    cost_price: Optional[float] = Field(None, ge=0)
+    sale_price: Optional[float] = Field(None, ge=0)
+    estimated_time: Optional[str | int] = None
+    image: Optional[str] = None
+    is_kit: Optional[bool] = None
+    parent_part_id: Optional[UUID] = None
+
+    @field_validator("estimated_time", mode="before")
+    @classmethod
+    def estimate_time_to_int(cls, v):
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            return int(v) if v.strip() else None
+        return v
+
+
+class PartResponse(BaseModel):
+    id: UUID
+    name: str
+    sku: str
+    description: Optional[str]
+    cost_price: float
+    sale_price: float
+    estimated_time: Optional[str | int]  # DB is int (minutes), schema accepts both
+    image: Optional[str]
+    is_kit: bool
+    parent_part_id: Optional[UUID]
+    children: List["PartResponse"] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+    @field_validator("estimated_time", mode="before")
+    @classmethod
+    def estimate_time_to_str(cls, v):
+        if v is None:
+            return None
+        return str(v) if isinstance(v, int) else v
+
+
+# Rebuild PartResponse to resolve forward reference "PartResponse"
+PartResponse.model_rebuild()
+
+
+# =====================
+# PRODUCT PART
+# =====================
+class ProductPartCreate(BaseModel):
+    product_id: UUID
+    part_id: UUID
+    quantity: int = Field(default=1, ge=1)
+
+
+class ProductPartUpdate(BaseModel):
+    quantity: Optional[int] = Field(None, ge=1)
+
+
+class ProductPartResponse(BaseModel):
+    id: UUID
+    product_id: UUID
+    part_id: UUID
+    quantity: int
+    created_at: datetime
+    updated_at: datetime
+    part: Optional["PartResponse"] = None
+    product: Optional["ProductResponse"] = None
+
+    class Config:
+        from_attributes = True
+
+
+# =====================
+# PRODUCT COMPOSITION (product composed of other products)
+# =====================
+class ProductCompositionCreate(BaseModel):
+    product_id: UUID
+    component_product_id: UUID
+    quantity: int = Field(default=1, ge=1)
+
+
+class ProductCompositionUpdate(BaseModel):
+    quantity: Optional[int] = Field(None, ge=1)
+
+
+class ProductCompositionResponse(BaseModel):
+    id: UUID
+    product_id: UUID
+    component_product_id: UUID
+    quantity: int
+    created_at: datetime
+    updated_at: datetime
+    component_product: Optional["ProductResponse"] = None
 
     class Config:
         from_attributes = True
@@ -220,6 +472,8 @@ class TicketCreate(BaseModel):
     product_id: Optional[UUID] = None
     tags: Optional[List[str]] = []
     customer_id: Optional[UUID] = None  # só admin pode definir ao criar
+    parent_ticket_id: Optional[UUID] = None
+    # opened_at é definido automaticamente pelo backend na criação
 
 
 class TicketUpdate(BaseModel):
@@ -229,8 +483,13 @@ class TicketUpdate(BaseModel):
     priority: Optional[str] = None
     agent_id: Optional[UUID] = None
     category_id: Optional[UUID] = None
+    product_id: Optional[UUID] = None
     tags: Optional[List[str]] = None
     resolution_summary: Optional[str] = None
+    parent_ticket_id: Optional[UUID] = None
+    # opened_at não pode ser alterado - é definido na criação
+    attended_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
 
 
 class TicketResponse(BaseModel):
@@ -252,6 +511,86 @@ class TicketResponse(BaseModel):
     resolution_summary: Optional[str]
     created_at: datetime
     updated_at: datetime
+    parent_ticket_id: Optional[UUID] = None
+    opened_at: Optional[datetime] = None
+    attended_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# =====================
+# TICKET RELATIONS
+# =====================
+class TicketRelationCreate(BaseModel):
+    source_ticket_id: UUID
+    target_ticket_id: UUID
+
+
+class TicketRelationResponse(BaseModel):
+    id: UUID
+    source_ticket_id: UUID
+    target_ticket_id: UUID
+    created_at: datetime
+    target_ticket_title: Optional[str] = None  # populated in route
+
+    class Config:
+        from_attributes = True
+
+
+# =====================
+# TICKET COLLABORATOR
+# =====================
+class TicketCollaboratorCreate(BaseModel):
+    ticket_id: UUID
+    user_id: UUID
+    hours_spent: Optional[int] = 0
+    minutes_spent: Optional[int] = 0
+    notes: Optional[str] = None
+
+
+class TicketCollaboratorUpdate(BaseModel):
+    hours_spent: Optional[int] = None
+    minutes_spent: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TicketCollaboratorResponse(BaseModel):
+    id: UUID
+    ticket_id: UUID
+    user_id: UUID
+    hours_spent: int
+    minutes_spent: int
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    user_name: Optional[str] = None  # populated in route
+
+    class Config:
+        from_attributes = True
+
+
+# =====================
+# TICKET PRODUCT
+# =====================
+class TicketProductCreate(BaseModel):
+    ticket_id: UUID
+    product_id: UUID
+    quantity: Optional[int] = 1
+
+
+class TicketProductUpdate(BaseModel):
+    quantity: Optional[int] = None
+
+
+class TicketProductResponse(BaseModel):
+    id: UUID
+    ticket_id: UUID
+    product_id: UUID
+    quantity: int
+    created_at: datetime
+    product_name: Optional[str] = None  # populated in route
 
     class Config:
         from_attributes = True
@@ -361,11 +700,12 @@ class PaginatedResponse(BaseModel):
 # MENU ITEM
 # =====================
 class MenuItemCreate(BaseModel):
-    category: str = Field(..., min_length=1, max_length=100)
+    category: Optional[str] = Field(None, min_length=1, max_length=100)
     title: str = Field(..., min_length=1, max_length=200)
     href: str = Field(..., min_length=1, max_length=500)
     icon: Optional[str] = Field(None, max_length=50)
     order: int = 0
+    parent_id: Optional[UUID] = None
 
 
 class MenuItemUpdate(BaseModel):
@@ -375,11 +715,13 @@ class MenuItemUpdate(BaseModel):
     icon: Optional[str] = Field(None, max_length=50)
     order: Optional[int] = None
     is_active: Optional[bool] = None
+    parent_id: Optional[UUID] = None
 
 
 class MenuItemResponse(BaseModel):
     id: UUID
-    category: str
+    parent_id: Optional[UUID] = None
+    category: Optional[str] = None
     title: str
     href: str
     icon: Optional[str]
