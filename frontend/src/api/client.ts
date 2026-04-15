@@ -94,10 +94,16 @@ export const deleteTicket = (id: string) => api.delete(`/tickets/${id}`);
 
 export const bulkDeleteTickets = (ids: string[]) => api.post('/tickets/bulk-delete', ids);
 
+export const uploadTicketAttachments = (id: string, files: File[]) => {
+  const formData = new FormData();
+  files.forEach(file => formData.append('files', file));
+  return api.post(`/tickets/${id}/attachments`, formData);
+};
+
 export const uploadTicketPhoto = (id: string, file: File) => {
   const formData = new FormData();
-  formData.append('file', file);
-  return api.post(`/tickets/${id}/photos`, formData);
+  formData.append('files', file);
+  return api.post(`/tickets/${id}/attachments`, formData);
 };
 
 export const deleteTicketPhoto = (id: string, filename: string) =>

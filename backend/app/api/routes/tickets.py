@@ -276,49 +276,77 @@ async def reject_ticket(
     return await approve_ticket(ticket_id, approval_data, db, current_user)
 
 
-@router.post("/tickets/{ticket_id}/photos")
-async def upload_ticket_photo(
+# Allowed file types: images + documents
+ALLOWED_ATTACHMENT_TYPES = [
+    # Images
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    # Documents
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+]
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+@router.post("/tickets/{ticket_id}/attachments")
+async def upload_ticket_attachments(
     ticket_id: UUID,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Upload de foto para ticket.
-    Suporta: jpg, jpeg, png, gif, webp
-    Máximo: 5MB por ficheiro
+    Upload de múltiplos anexos para ticket.
+    Suporta: jpg, jpeg, png, gif, webp, pdf, doc, docx, xls, xlsx, ppt, pptx, txt
+    Máximo: 10MB por ficheiro, até 10 ficheiros por upload
     """
     # Verificar se ticket existe
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    
+
     # Verificar acesso (customer dono ou agent/admin)
     if current_user.role == "customer" and ticket.customer_id != current_user.customer_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
-    # Validar tipo de ficheiro
-    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="File type not allowed")
-    
-    # Validar tamanho (5MB)
-    contents = await file.read()
-    if len(contents) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
-    
-    # Salvar ficheiro
-    file.file.seek(0)
-    result = save_file(file, subdir="tickets")
-    
-    # Adicionar URL às fotos do ticket
-    photos = ticket.photos or []
-    photos.append(result["url"])
-    ticket.photos = photos
-    
+
+    # Limite de ficheiros
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 files per upload")
+
+    results = []
+    errors = []
+
+    for file in files:
+        # Validar tipo de ficheiro
+        if file.content_type not in ALLOWED_ATTACHMENT_TYPES:
+            errors.append(f"{file.filename}: tipo '{file.content_type}' não permitido")
+            continue
+
+        # Validar tamanho
+        contents = await file.read()
+        if len(contents) > MAX_FILE_SIZE:
+            errors.append(f"{file.filename}: ficheiro demasiado grande (max 10MB)")
+            continue
+
+        # Salvar ficheiro
+        file.file.seek(0)
+        result = save_file(file, subdir="tickets")
+        results.append({"url": result["url"], "filename": result["filename"], "content_type": file.content_type})
+
+    # Adicionar URLs aos anexos do ticket
+    attachments = ticket.photos or []
+    for r in results:
+        attachments.append(r["url"])
+    ticket.photos = attachments
+
     db.commit()
-    
-    return {"url": result["url"], "filename": result["filename"]}
+
+    return {"uploaded": results, "errors": errors if errors else None}
 
 
 @router.delete("/tickets/{ticket_id}/photos/{filename}")

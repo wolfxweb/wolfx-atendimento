@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTicket, getComments, createComment, approveTicket, rejectTicket } from '../../api/client';
 import Modal from '../../components/Modal';
+import ImageViewer from '../../components/ImageViewer';
 
 export default function CustomerTicketDetail() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,7 @@ export default function CustomerTicketDetail() {
   const [showApproveSuccess, setShowApproveSuccess] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
+  const [viewingImageIndex, setViewingImageIndex] = useState(-1);
 
   const { data: ticket, isLoading: ticketLoading } = useQuery({
     queryKey: ['ticket', id],
@@ -100,6 +102,69 @@ export default function CustomerTicketDetail() {
             </div>
           )}
         </div>
+
+        {/* Attachments */}
+        {ticket?.photos && ticket.photos.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Anexos ({ticket.photos.length})</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {ticket.photos.map((url: string, idx: number) => {
+                const filename = url.split('/').pop() || `file-${idx}`;
+                const ext = filename.split('.').pop()?.toLowerCase() || '';
+                const isImage = ['jpg','jpeg','png','gif','webp','svg'].includes(ext);
+                const iconMap: Record<string, string> = {
+                  pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '📗',
+                  ppt: '📙', pptx: '📙', txt: '📝', zip: '🗜️',
+                  jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️',
+                };
+                const icon = iconMap[ext] || '📎';
+                return (
+                  <div key={idx} className="relative group border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:border-indigo-300 transition-colors">
+                    {isImage ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const images = ticket.photos
+                            .map((u: string, i: number) => ({ url: u, filename: u.split('/').pop() || `file-${i}` }))
+                            .filter((f: {filename: string}) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f.filename));
+                          const imgIdx = images.findIndex((f: {url: string}) => f.url === url);
+                          setViewingImageIndex(imgIdx);
+                        }}
+                        className="w-full"
+                      >
+                        <img src={url} alt={filename} className="w-full h-24 object-cover" />
+                      </button>
+                    ) : (
+                      <a
+                        href={url}
+                        download={filename}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col items-center justify-center h-24 p-2 text-xs text-gray-600 hover:text-indigo-600"
+                      >
+                        <span className="text-2xl mb-1">{icon}</span>
+                        <span className="truncate w-full text-center leading-tight">{filename}</span>
+                      </a>
+                    )}
+                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <a
+                        href={url}
+                        download={filename}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="bg-indigo-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-indigo-700"
+                        title="Baixar"
+                      >
+                        ↓
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Approval Section */}
         {ticket?.status === 'solved' && (
@@ -231,6 +296,22 @@ export default function CustomerTicketDetail() {
           </div>
         </form>
       </Modal>
+
+      {/* Image viewer */}
+      {viewingImageIndex >= 0 && ticket?.photos && (() => {
+        const images = (ticket.photos as string[])
+          .map((u, i) => ({ url: u, filename: u.split('/').pop() || `file-${i}` }))
+          .filter((f) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f.filename));
+        return (
+          <ImageViewer
+            images={images}
+            currentIndex={viewingImageIndex}
+            onClose={() => setViewingImageIndex(-1)}
+            onPrev={() => setViewingImageIndex(i => (i - 1 + images.length) % images.length)}
+            onNext={() => setViewingImageIndex(i => (i + 1) % images.length)}
+          />
+        );
+      })()}
     </div>
   );
 }

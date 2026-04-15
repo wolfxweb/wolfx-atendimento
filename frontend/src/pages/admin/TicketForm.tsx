@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/Layout';
+import ImageViewer from '../../components/ImageViewer';
 import {
   getTicket, getTickets, createTicket, updateTicket,
   getCustomers, getCategories, getProducts, getUsers,
   getTicketCollaborators, addTicketCollaborator, removeTicketCollaborator,
   getTicketProducts, addTicketProduct, removeTicketProduct,
   getTicketRelations, addTicketRelation, removeTicketRelation,
+  uploadTicketAttachments, deleteTicketPhoto,
   extractErrorMessage,
 } from '../../api/client';
 
@@ -113,6 +115,13 @@ export default function TicketForm() {
   // For new tickets (not yet saved), store pending relations
   const [pendingRelations, setPendingRelations] = useState<TicketRelation[]>([]);
 
+  // Attachments state
+  const [uploadedAttachments, setUploadedAttachments] = useState<string[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState('');
+  const [isUploading] = useState(false);
+  const [viewingImageIndex, setViewingImageIndex] = useState(-1);
+
   // Load existing ticket data
   const { data: existingTicket } = useQuery({
     queryKey: ['ticket', id],
@@ -201,6 +210,21 @@ export default function TicketForm() {
   useEffect(() => { setCollaborators(existingCollaborators); }, [existingCollaborators]);
   useEffect(() => { setTicketProducts(existingProducts); }, [existingProducts]);
   useEffect(() => { setTicketRelations(existingRelations); }, [existingRelations]);
+  useEffect(() => { if (existingTicket?.photos) setUploadedAttachments(existingTicket.photos); }, [existingTicket]);
+
+  // Upload attachments mutation
+  const uploadMutation = useMutation({
+    mutationFn: ({ ticketId, files }: { ticketId: string; files: File[] }) =>
+      uploadTicketAttachments(ticketId, files),
+    onSuccess: (result: any) => {
+      const uploaded = result.data?.uploaded || [];
+      const newUrls = uploaded.map((u: any) => u.url);
+      setUploadedAttachments(prev => [...prev, ...newUrls]);
+      setPendingAttachments([]);
+      setAttachmentError('');
+    },
+    onError: (err: any) => setAttachmentError(extractErrorMessage(err)),
+  });
 
   // Mutations
   const createMutation = useMutation({
@@ -588,6 +612,149 @@ export default function TicketForm() {
               </div>
             </div>
 
+            {/* Anexos */}
+            <div className={sectionClass}>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Anexos</h3>
+
+              {/* Upload area */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-4 text-center">
+                <input
+                  type="file"
+                  id="attachment-input"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setPendingAttachments(files);
+                    setAttachmentError('');
+                  }}
+                  className="hidden"
+                />
+                <label htmlFor="attachment-input" className="cursor-pointer">
+                  <div className="text-indigo-600 hover:text-indigo-700 font-medium text-sm">
+                    Selecione o arquivo...
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">Imagens, PDF, Word, Excel, PPT até 10MB</div>
+                </label>
+              </div>
+
+              {/* Pending files to upload */}
+              {pendingAttachments.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Ficheiros seleccionados ({pendingAttachments.length})</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isEdit && id) {
+                          uploadMutation.mutate({ ticketId: id, files: pendingAttachments });
+                        } else {
+                          setAttachmentError('Guarda o ticket primeiro para poder adicionar anexos');
+                        }
+                      }}
+                      disabled={isUploading || uploadMutation.isPending}
+                      className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {uploadMutation.isPending ? 'A enviar...' : 'Enviar Anexos'}
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {pendingAttachments.map((file, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
+                        <span className="truncate flex-1">{file.name}</span>
+                        <span className="text-xs text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                        <button type="button" onClick={() => setPendingAttachments(pendingAttachments.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 text-xs">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Uploaded attachments */}
+              {uploadedAttachments.length > 0 && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700 mb-2 block">Anexos Enviados ({uploadedAttachments.length})</span>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {uploadedAttachments.map((url, idx) => {
+                      const filename = url.split('/').pop() || `file-${idx}`;
+                      const ext = filename.split('.').pop()?.toLowerCase() || '';
+                      const isImage = ['jpg','jpeg','png','gif','webp','svg'].includes(ext);
+                      const iconMap: Record<string, string> = {
+                        pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '📗',
+                        ppt: '📙', pptx: '📙', txt: '📝', zip: '🗜️', rar: '🗜️',
+                        jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️',
+                      };
+                      const icon = iconMap[ext] || '📎';
+                      const isPdf = ext === 'pdf';
+
+                      return (
+                        <div key={idx} className="relative group border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:border-indigo-300 transition-colors">
+                          {isImage ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const images = uploadedAttachments
+                                  .map((u, i) => ({ url: u, filename: u.split('/').pop() || `file-${i}` }))
+                                  .filter(f => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f.filename));
+                                const imgIdx = images.findIndex(f => f.url === url);
+                                setViewingImageIndex(imgIdx);
+                              }}
+                              className="w-full"
+                            >
+                              <img src={url} alt={filename} className="w-full h-24 object-cover" />
+                            </button>
+                          ) : (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex flex-col items-center justify-center h-24 p-2 text-xs text-gray-600 hover:text-indigo-600"
+                              onClick={e => isPdf && e.preventDefault()}
+                            >
+                              <span className="text-2xl mb-1">{icon}</span>
+                              <span className="truncate w-full text-center leading-tight">{filename}</span>
+                            </a>
+                          )}
+                          {/* Action buttons overlay */}
+                          <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <a
+                              href={url}
+                              download={filename}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="bg-indigo-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-indigo-700"
+                              title="Baixar"
+                            >
+                              ↓
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isEdit && id) {
+                                  deleteTicketPhoto(id, filename).then(() => {
+                                    setUploadedAttachments(uploadedAttachments.filter((_, i) => i !== idx));
+                                  });
+                                } else {
+                                  setUploadedAttachments(uploadedAttachments.filter((_, i) => i !== idx));
+                                }
+                              }}
+                              className="bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                              title="Eliminar"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {attachmentError && <p className="text-sm text-red-500 mt-2">{attachmentError}</p>}
+            </div>
+
             {/* Produtos */}
             <div className={sectionClass}>
               <div className="flex items-center justify-between mb-3">
@@ -898,6 +1065,22 @@ export default function TicketForm() {
           </div>
         )}
       </div>
+
+      {/* Image viewer modal */}
+      {viewingImageIndex >= 0 && (() => {
+        const images = uploadedAttachments
+          .map(u => ({ url: u, filename: u.split('/').pop() || 'file' }))
+          .filter(f => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f.filename));
+        return (
+          <ImageViewer
+            images={images}
+            currentIndex={viewingImageIndex}
+            onClose={() => setViewingImageIndex(-1)}
+            onPrev={() => setViewingImageIndex(i => (i - 1 + images.length) % images.length)}
+            onNext={() => setViewingImageIndex(i => (i + 1) % images.length)}
+          />
+        );
+      })()}
     </Layout>
   );
 }
