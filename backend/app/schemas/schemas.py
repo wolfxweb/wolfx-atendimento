@@ -473,6 +473,7 @@ class TicketCreate(BaseModel):
     tags: Optional[List[str]] = []
     customer_id: Optional[UUID] = None  # só admin pode definir ao criar
     parent_ticket_id: Optional[UUID] = None
+    sla_id: Optional[UUID] = None  # opcional, backend calcula se não fornecido
     # opened_at é definido automaticamente pelo backend na criação
 
 
@@ -486,6 +487,7 @@ class TicketUpdate(BaseModel):
     product_id: Optional[UUID] = None
     tags: Optional[List[str]] = None
     resolution_summary: Optional[str] = None
+    sla_id: Optional[UUID] = None
     parent_ticket_id: Optional[UUID] = None
     # opened_at não pode ser alterado - é definido na criação
     # attended_at e closed_at são str no input (JSON) para evitar erro de parse de datetime
@@ -516,6 +518,10 @@ class TicketResponse(BaseModel):
     photos: List[str]
     tags: List[str]
     sla_status: str
+    sla_id: Optional[UUID] = None
+    sla_response_limit: Optional[datetime] = None
+    sla_resolution_limit: Optional[datetime] = None
+    first_response_at: Optional[datetime] = None
     requires_approval: bool
     approved_at: Optional[datetime]
     resolution_summary: Optional[str]
@@ -656,6 +662,7 @@ class ApprovalResponse(BaseModel):
 # =====================
 class SLACreate(BaseModel):
     customer_id: Optional[UUID] = None
+    category_id: Optional[UUID] = None
     name: str = Field(..., min_length=2)
     priority: str
     first_response_minutes: int
@@ -664,21 +671,25 @@ class SLACreate(BaseModel):
     business_start_hour: int = 9
     business_end_hour: int = 18
     business_days: List[int] = [1, 2, 3, 4, 5]
+    is_active: bool = True
 
 
 class SLAUpdate(BaseModel):
     name: Optional[str] = None
+    category_id: Optional[UUID] = None
     first_response_minutes: Optional[int] = None
     resolution_minutes: Optional[int] = None
     business_hours_only: Optional[bool] = None
     business_start_hour: Optional[int] = None
     business_end_hour: Optional[int] = None
     business_days: Optional[List[int]] = None
+    is_active: Optional[bool] = None
 
 
 class SLAResponse(BaseModel):
     id: UUID
     customer_id: Optional[UUID]
+    category_id: Optional[UUID]
     name: str
     priority: str
     first_response_minutes: int
@@ -690,6 +701,7 @@ class SLAResponse(BaseModel):
     is_active: bool
     is_default: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

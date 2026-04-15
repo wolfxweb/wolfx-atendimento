@@ -75,7 +75,9 @@ async def create_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    ticket_dict = ticket_data.model_dump()
+    from app.api.routes.sla import _find_sla_for_ticket
+
+    ticket_dict = ticket_data.model_dump(exclude_none=True)
 
     if current_user.role == "customer":
         # Customers must use their own customer_id
@@ -88,7 +90,21 @@ async def create_ticket(
         raise HTTPException(status_code=400, detail="Admin must specify customer_id when creating a ticket")
 
     # Data de abertura é sempre definida automaticamente
-    ticket_dict["opened_at"] = datetime.utcnow()
+    now = datetime.utcnow()
+    ticket_dict["opened_at"] = now
+
+    # Auto-calcular SLA se não for fornecido
+    if not ticket_dict.get("sla_id"):
+        sla = _find_sla_for_ticket(
+            db,
+            ticket_dict["customer_id"],
+            ticket_dict.get("priority", "normal"),
+            ticket_dict.get("category_id"),
+        )
+        if sla:
+            ticket_dict["sla_id"] = sla.id
+            ticket_dict["sla_response_limit"] = now + timedelta(minutes=sla.first_response_minutes)
+            ticket_dict["sla_resolution_limit"] = now + timedelta(minutes=sla.resolution_minutes)
 
     ticket = Ticket(
         **ticket_dict,
@@ -454,6 +470,17 @@ async def create_comment(
         is_public=comment_data.is_public
     )
     db.add(comment)
+
+    # Marcar first_response_at se for a primeira resposta de um agente/admin
+    if current_user.role in ("agent", "admin") and ticket.first_response_at is None:
+        ticket.first_response_at = datetime.utcnow()
+        # Se ainda não tem SLA limits, calcular agora
+        if not ticket.sla_response_limit and ticket.sla_id:
+            from app.api.routes.sla import _find_sla_for_ticket
+            sla = db.query(SLA).filter(SLA.id == ticket.sla_id).first()
+            if sla:
+                ticket.sla_response_limit = datetime.utcnow() + timedelta(minutes=sla.first_response_minutes)
+
     db.commit()
     db.refresh(comment)
 

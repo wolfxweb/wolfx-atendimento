@@ -356,11 +356,36 @@ export const updateAgentStatus = (id: string, status: string) =>
   api.patch(`/agents/${id}/status`, null, { params: { status } });
 
 // SLAs (admin)
-export const getSLAs = () => api.get('/sla');
+export const getSLAs = (params?: { customer_id?: string; priority?: string; category_id?: string; is_active?: boolean }) =>
+  api.get('/sla', { params });
 
 export const getGlobalSLAs = () => api.get('/sla/global');
 
 export const getSLADashboard = () => api.get('/sla/dashboard');
+
+export const createSLA = (data: {
+  name: string;
+  priority: string;
+  category_id?: string;
+  first_response_minutes: number;
+  resolution_minutes: number;
+  business_hours_only?: boolean;
+  is_active?: boolean;
+}) => api.post('/sla', data);
+
+export const updateSLA = (id: string, data: Partial<{
+  name: string;
+  category_id: string;
+  first_response_minutes: number;
+  resolution_minutes: number;
+  business_hours_only: boolean;
+  is_active: boolean;
+}>) => api.patch(`/sla/${id}`, data);
+
+export const deleteSLA = (id: string) => api.delete(`/sla/${id}`);
+
+export const calculateSLA = (customer_id: string, priority: string, category_id?: string) =>
+  api.get('/sla/calculate', { params: { customer_id, priority, category_id } });
 
 // Menu
 export const getMenuItems = () => api.get('/menu');

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime, ForeignKey,
-    Numeric, Integer, JSON, Enum as SAEnum, Date
+    Numeric, Integer, JSON, Enum as SAEnum, Date, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
@@ -343,13 +343,17 @@ class Ticket(Base):
     photos = Column(JSON, default=list)
     tags = Column(JSON, default=list)
     sla_status = Column(String(20), default=SLAStatus.WITHIN.value)
+    sla_id = Column(UUID(as_uuid=True), ForeignKey("slas.id"), nullable=True)
+    sla_response_limit = Column(DateTime, nullable=True)
+    sla_resolution_limit = Column(DateTime, nullable=True)
+    first_response_at = Column(DateTime, nullable=True)
     requires_approval = Column(Boolean, default=True)
     approved_at = Column(DateTime, nullable=True)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     resolution_summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Novas colunas para hierarquia e controle de tempo
     parent_ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=True)
     opened_at = Column(DateTime, nullable=True)
@@ -368,6 +372,7 @@ class Ticket(Base):
     comments = relationship("Comment", back_populates="ticket", order_by="Comment.created_at")
     approvals = relationship("TicketApproval", back_populates="ticket")
     ticket_relations = relationship("TicketRelation", back_populates="source_ticket", cascade="all, delete-orphan", foreign_keys=[TicketRelation.source_ticket_id])
+    sla = relationship("SLA", foreign_keys=[sla_id])
 
 
 # =====================
@@ -432,9 +437,13 @@ class MenuItem(Base):
 # =====================
 class SLA(Base):
     __tablename__ = "slas"
+    __table_args__ = (
+        UniqueConstraint('customer_id', 'priority', 'category_id', name='uq_sla_customer_priority_category'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=True, unique=True)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=True)
+    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True)
     name = Column(String(100), nullable=False)
     priority = Column(String(20), nullable=False)
     first_response_minutes = Column(Integer, nullable=False)
@@ -449,4 +458,5 @@ class SLA(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relacionamentos
-    customer = relationship("Customer", backref="sla")
+    customer = relationship("Customer", backref="slas")
+    category = relationship("Category", backref="slas")
