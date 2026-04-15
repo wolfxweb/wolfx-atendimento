@@ -251,57 +251,12 @@ export default function TicketForm() {
     }
   };
 
-  const addCollaborator = () => {
-    // Use keyboard-selected value from ref if state not yet updated (React batching)
-    const userId = newCollabUserId || pendingCollabUserIdRef.current;
-    if (!userId) {
-      setCollabError('Selecione um colaborador.');
-      return;
-    }
-    const user = (users as any[]).find((u: any) => u.id === userId);
-    const newCollab: TicketCollaborator = {
-      id: `temp-${Date.now()}`,
-      ticket_id: id || '',
-      user_id: userId,
-      user_name: user?.name || '',
-      hours_spent: newCollabHours,
-      minutes_spent: newCollabMinutes,
-      notes: newCollabNotes,
-    };
-    setCollaborators(prev => [...prev, newCollab]);
-    setNewCollabUserId('');
-    pendingCollabUserIdRef.current = '';
-    setNewCollabHours(0);
-    setNewCollabMinutes(0);
-    setNewCollabNotes('');
-    setShowCollabForm(false);
-  };
-
   const removeCollaborator = (idx: number) => {
     const col = collaborators[idx];
     if (col.id && !col.id.startsWith('temp-')) {
       removeTicketCollaborator(col.id);
     }
     setCollaborators(collaborators.filter((_, i) => i !== idx));
-  };
-
-  const addProduct = () => {
-    // Use keyboard-selected value from ref if state not yet updated (React batching)
-    const prodId = newProdId || pendingProdIdRef.current;
-    if (!prodId) { setProdError('Selecione um produto.'); return; }
-    const prod = (products as any[]).find((p: any) => p.id === prodId);
-    const newTp: TicketProduct = {
-      id: `temp-${Date.now()}`,
-      ticket_id: id || '',
-      product_id: prodId,
-      product_name: prod?.name || '',
-      quantity: newProdQty,
-    };
-    setTicketProducts(prev => [...prev, newTp]);
-    setNewProdId('');
-    pendingProdIdRef.current = '';
-    setNewProdQty(1);
-    setShowProdForm(false);
   };
 
   const removeProduct = (idx: number) => {
@@ -542,7 +497,7 @@ export default function TicketForm() {
               <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
                 <div className="col-span-4">
                   <label className={labelClass}>Produto</label>
-                  <select value={newProdId} onChange={e => { setNewProdId(e.target.value); pendingProdIdRef.current = e.target.value; setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; const val = options[idx].value; pendingProdIdRef.current = val; setNewProdId(val); setProdError(''); } } }} className={inputClass}>
+                  <select data-prod-select value={newProdId} onChange={e => { setNewProdId(e.target.value); pendingProdIdRef.current = e.target.value; setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setShowProdForm(false); } } }} className={inputClass}>
                     <option value="">Selecionar produto</option>
                     {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} - {formatBRL(parseFloat(p.price) || 0)}</option>)}
                   </select>
@@ -552,7 +507,7 @@ export default function TicketForm() {
                   <input type="number" min={1} value={newProdQty} onChange={e => setNewProdQty(parseInt(e.target.value) || 1)} className={inputClass} />
                 </div>
                 <div className="flex gap-2 items-center pb-0.5">
-                  <button type="button" onClick={addProduct} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
+                  <button type="button" onClick={() => { const select = document.querySelector('[data-prod-select]') as HTMLSelectElement; const val = newProdId || pendingProdIdRef.current || (select?.value || ''); if (!val) { setProdError('Selecione um produto.'); return; } const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setNewProdId(''); pendingProdIdRef.current = ''; setNewProdQty(1); setShowProdForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
                   <button type="button" onClick={() => { setShowProdForm(false); setNewProdId(''); setNewProdQty(1); setProdError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
                 </div>
                 {prodError && <p className="col-span-6 text-sm text-red-500">{prodError}</p>}
@@ -605,7 +560,7 @@ export default function TicketForm() {
               <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200">
                 <div>
                   <label className={labelClass}>Colaborador</label>
-                  <select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); pendingCollabUserIdRef.current = e.target.value; setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const options = select.options; const val = options[idx].value; pendingCollabUserIdRef.current = val; setNewCollabUserId(val); setCollabError(''); } } }} className={inputClass}>
+                  <select data-collab-select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); pendingCollabUserIdRef.current = e.target.value; setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setShowCollabForm(false); } } }} className={inputClass}>
                     <option value="">Selecionar</option>
                     {collaboratorsOptions.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Colaborador'})</option>)}
                   </select>
@@ -619,7 +574,7 @@ export default function TicketForm() {
                   <input type="number" min={0} max={59} value={newCollabMinutes} onChange={e => setNewCollabMinutes(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" />
                 </div>
                 <div className="flex items-end gap-2">
-                  <button type="button" onClick={addCollaborator} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
+                  <button type="button" onClick={() => { const select = document.querySelector('[data-collab-select]') as HTMLSelectElement; const val = newCollabUserId || pendingCollabUserIdRef.current || (select?.value || ''); if (!val) { setCollabError('Selecione um colaborador.'); return; } const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setNewCollabUserId(''); pendingCollabUserIdRef.current = ''; setNewCollabHours(0); setNewCollabMinutes(0); setNewCollabNotes(''); setShowCollabForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
                   <button type="button" onClick={() => { setShowCollabForm(false); setNewCollabUserId(''); setCollabError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
                 </div>
                 {collabError && <p className="col-span-4 text-sm text-red-500">{collabError}</p>}
