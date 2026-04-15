@@ -491,6 +491,14 @@ class TicketUpdate(BaseModel):
     attended_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
 
+    @validator("attended_at", "closed_at", pre=True)
+    def parse_datetime(cls, v):
+        if v is None or v == "":
+            return None
+        if isinstance(v, str) and len(v) < 16:
+            return None
+        return v
+
 
 class TicketResponse(BaseModel):
     id: UUID
