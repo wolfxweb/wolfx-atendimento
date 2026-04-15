@@ -234,7 +234,8 @@ export default function TicketForm() {
     setError('');
     if (!form.title.trim()) { setError('Título é obrigatório'); return; }
     if (!form.description.trim()) { setError('Descrição é obrigatória'); return; }
-    if (!form.customer_id) { setError('Cliente é obrigatório'); return; }
+    if (!form.customer_id?.trim()) { setError('Cliente é obrigatório'); return; }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(form.customer_id.trim())) { setError('Cliente inválido'); return; }
 
     const submitData = {
       ...form,
