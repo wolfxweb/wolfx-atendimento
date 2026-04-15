@@ -268,7 +268,7 @@ export default function TicketForm() {
       minutes_spent: newCollabMinutes,
       notes: newCollabNotes,
     };
-    setCollaborators([...collaborators, newCollab]);
+    setCollaborators(prev => [...prev, newCollab]);
     setNewCollabUserId('');
     pendingCollabUserIdRef.current = '';
     setNewCollabHours(0);
@@ -297,7 +297,7 @@ export default function TicketForm() {
       product_name: prod?.name || '',
       quantity: newProdQty,
     };
-    setTicketProducts([...ticketProducts, newTp]);
+    setTicketProducts(prev => [...prev, newTp]);
     setNewProdId('');
     pendingProdIdRef.current = '';
     setNewProdQty(1);
@@ -338,10 +338,9 @@ export default function TicketForm() {
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ['ticket-relations', id] });
         });
-      setTicketRelations([...ticketRelations, newRel]);
+      setTicketRelations(prev => [...prev, newRel]);
     } else {
-      // For new tickets, store in pending
-      setPendingRelations([...pendingRelations, newRel]);
+      setPendingRelations(prev => [...prev, newRel]);
     }
     setNewRelTicketId('');
     setShowRelForm(false);
