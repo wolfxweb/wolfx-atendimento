@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Modal from '../../components/Modal';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/Layout';
@@ -111,6 +112,7 @@ export default function TicketForm() {
   const [activeTab, setActiveTab] = useState<'dados'|'anexos'|'produtos'|'colaboradores'|'relacoes'|'conversa'>('dados');
   const [commentText, setCommentText] = useState('');
   const [isPublicComment, setIsPublicComment] = useState(true);
+  const [commentToDelete, setCommentToDelete] = useState<any>(null);
   const [showRelForm, setShowRelForm] = useState(false);
 
   // Refs to capture keyboard-selected values (synchronous, no React batching issues)
@@ -1022,11 +1024,7 @@ export default function TicketForm() {
                       {/* Delete button */}
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm('Eliminar este comentário?')) {
-                            removeCommentMutation.mutate(comment.id);
-                          }
-                        }}
+                        onClick={() => setCommentToDelete(comment)}
                         className="text-gray-400 hover:text-red-500 text-xs px-2 py-1 rounded"
                         title="Eliminar"
                       >
@@ -1239,6 +1237,40 @@ export default function TicketForm() {
           />
         );
       })()}
+
+      {/* Delete Comment Modal */}
+      {commentToDelete && (
+        <Modal
+          isOpen={true}
+          onClose={() => setCommentToDelete(null)}
+          title="Confirmar Eliminação"
+          size="sm"
+        >
+          <div className="text-center">
+            <p className="text-gray-600 mb-6">
+              Tem a certeza que deseja eliminar este comentário de <strong>{commentToDelete.author_name || 'Desconhecido'}</strong>?
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setCommentToDelete(null)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  removeCommentMutation.mutate(commentToDelete.id);
+                  setCommentToDelete(null);
+                }}
+                disabled={removeCommentMutation.isPending}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {removeCommentMutation.isPending ? 'A eliminar...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Layout>
   );
 }
