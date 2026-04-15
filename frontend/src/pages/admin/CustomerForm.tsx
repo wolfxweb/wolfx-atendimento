@@ -177,7 +177,7 @@ export default function CustomerForm() {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <button

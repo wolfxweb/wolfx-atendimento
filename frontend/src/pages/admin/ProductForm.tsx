@@ -297,7 +297,7 @@ export default function ProductForm() {
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto">
+      <div className="w-full">
         {/* Top Bar */}
         <div className="flex items-center gap-4 mb-6">
           <button
