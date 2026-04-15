@@ -138,6 +138,18 @@ async def update_ticket(
     
     update_dict = ticket_data.model_dump(exclude_unset=True)
 
+    # Converter datetime strings para datetime objects (evita erro de parse de strings vazias)
+    for field in ("attended_at", "closed_at"):
+        if field in update_dict:
+            val = update_dict[field]
+            if not val or val == "" or (isinstance(val, str) and len(val.strip()) < 16):
+                update_dict[field] = None
+            else:
+                try:
+                    update_dict[field] = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                except Exception:
+                    update_dict[field] = None
+
     # Se status mudou para closed/solved e closed_at não foi enviado, preencher automaticamente
     if update_dict.get("status") in (TicketStatus.CLOSED.value, TicketStatus.SOLVED.value):
         if "closed_at" not in update_dict or update_dict["closed_at"] is None:

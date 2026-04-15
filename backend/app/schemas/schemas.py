@@ -488,16 +488,18 @@ class TicketUpdate(BaseModel):
     resolution_summary: Optional[str] = None
     parent_ticket_id: Optional[UUID] = None
     # opened_at não pode ser alterado - é definido na criação
-    attended_at: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
+    # attended_at e closed_at são str no input (JSON) para evitar erro de parse de datetime
+    attended_at: Optional[str] = None
+    closed_at: Optional[str] = None
 
-    @validator("attended_at", "closed_at", pre=True)
-    def parse_datetime(cls, v):
-        if v is None or v == "":
+    def parse_datetime_str(self, key: str) -> Optional[datetime]:
+        val = getattr(self, key)
+        if not val or val == "" or (isinstance(val, str) and len(val.strip()) < 16):
             return None
-        if isinstance(v, str) and len(v) < 16:
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except Exception:
             return None
-        return v
 
 
 class TicketResponse(BaseModel):
