@@ -185,6 +185,10 @@ Categorias para organizar Products e Tickets.
 | photos | JSON | Array de URLs/caminhos |
 | tags | JSON | Array de strings |
 | sla_status | Enum | `within`, `at_risk`, `breached` |
+| sla_id | UUID | FK → SLA, nullable |
+| sla_response_limit | DateTime | Nullable (calculado automaticamente) |
+| sla_resolution_limit | DateTime | Nullable (calculado automaticamente) |
+| first_response_at | DateTime | Nullable (preenchido na 1ª resposta) |
 | requires_approval | Boolean | Default True |
 | approved_at | DateTime | Nullable |
 | approved_by | UUID | FK → User, nullable |
@@ -216,12 +220,13 @@ Categorias para organizar Products e Tickets.
 
 ### SLA
 
-Um único modelo que pode ser global (sem customer) ou customizado (com customer_id).
+SLA pode ser global (sem customer) ou customizado (com customer_id). A chave única é `(customer_id, priority, category_id)`.
 
 | Campo | Tipo | Validação |
 |-------|------|-----------|
 | id | UUID | PK |
-| customer_id | UUID | FK → Customer, nullable, unique (se cliente) |
+| customer_id | UUID | FK → Customer, nullable |
+| category_id | UUID | FK → Category, nullable (opcional — SLA específico por categoria) |
 | name | String(100) | Not null |
 | priority | String(20) | `low`, `normal`, `high`, `urgent` |
 | first_response_minutes | Integer | Not null |
@@ -238,8 +243,12 @@ Um único modelo que pode ser global (sem customer) ou customizado (com customer
 **Funcionamento:**
 - `customer_id = NULL` → SLA global (default do sistema)
 - `customer_id = UUID` → SLA customizado desse cliente
-- Se cliente não tiver SLA custom, usa o global (is_default=True)
-- `is_default=True` identifica o SLA global
+- `category_id = NULL` → SLA aplica-se a todas as categorias
+- `category_id = UUID` → SLA aplica-se só a tickets dessa categoria
+- Lookup: tenta (customer + priority + category) → (customer + priority) → (global + priority + category) → (global + priority)
+- Tickets recebem `sla_id`, `sla_response_limit`, `sla_resolution_limit`, `first_response_at`
+- `first_response_at` é preenchido automaticamente na primeira resposta de um agente/admin
+- Se `sla_id` não for fornecido na criação, o backend calcula automaticamente
 
 ---
 
