@@ -10,6 +10,7 @@ import {
   getTicketProducts, addTicketProduct, removeTicketProduct,
   getTicketRelations, addTicketRelation, removeTicketRelation,
   uploadTicketAttachments, deleteTicketPhoto,
+  getComments, createComment, deleteComment,
   extractErrorMessage,
 } from '../../api/client';
 
@@ -183,6 +184,13 @@ export default function TicketForm() {
     queryFn: () => getUsers().then((r: any) => r.data as any[]),
   });
 
+  // Load comments for this ticket
+  const { data: ticketComments = [] } = useQuery({
+    queryKey: ['ticket-comments', id],
+    queryFn: () => getComments(id!).then(r => r.data as any[]),
+    enabled: !!id,
+  });
+
   // Filter users to only show agents/admins
   const collaboratorsOptions = (users as any[]).filter((u: any) => u.role === 'agent' || u.role === 'admin');
 
@@ -216,6 +224,25 @@ export default function TicketForm() {
   useEffect(() => { if (existingTicket?.photos) setUploadedAttachments(existingTicket.photos); }, [existingTicket]);
 
   // Upload attachments mutation
+  // Comment mutations
+  const postCommentMutation = useMutation({
+    mutationFn: ({ body, is_public }: { body: string; is_public: boolean }) =>
+      createComment(id!, { body, is_public }),
+    onSuccess: () => {
+      setCommentText('');
+      queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] });
+    },
+    onError: (err: any) => alert(extractErrorMessage(err)),
+  });
+
+  const removeCommentMutation = useMutation({
+    mutationFn: (commentId: string) => deleteComment(id!, commentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] });
+    },
+    onError: (err: any) => alert(extractErrorMessage(err)),
+  });
+
   const uploadMutation = useMutation({
     mutationFn: ({ ticketId, files }: { ticketId: string; files: File[] }) =>
       uploadTicketAttachments(ticketId, files),
@@ -571,7 +598,7 @@ export default function TicketForm() {
               </div>
             )}
 
-            <div className={`${sectionClass}${activeTab !== 'dados' ? ' hidden' : ''}`}>
+            <div style={{display: activeTab === 'dados' ? 'block' : 'none'}}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Dados do Ticket</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
@@ -644,7 +671,7 @@ export default function TicketForm() {
               </div>
             </div>
 
-            <div className={`${sectionClass}${activeTab !== 'anexos' ? ' hidden' : ''}`}>
+            <div style={{display: activeTab === 'anexos' ? 'block' : 'none'}}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Anexos</h3>
 
               {/* Upload area */}
@@ -786,7 +813,7 @@ export default function TicketForm() {
               {attachmentError && <p className="text-sm text-red-500 mt-2">{attachmentError}</p>}
             </div>
 
-            <div className={`${sectionClass}${activeTab !== 'produtos' ? ' hidden' : ''}`}>
+            <div style={{display: activeTab === 'produtos' ? 'block' : 'none'}}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Produtos</h3>
                 {!showProdForm && <button type="button" onClick={() => setShowProdForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar Produto</button>}
@@ -826,7 +853,7 @@ export default function TicketForm() {
             </div>
 
             {/* Colaboradores */}
-            <div className={`${sectionClass}${activeTab !== 'colaboradores' ? ' hidden' : ''}`}>
+            <div style={{display: activeTab === 'colaboradores' ? 'block' : 'none'}}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Colaboradores {collaborators.length > 0 && <span className="ml-2 text-xs font-normal text-gray-500">(Total: {totalHours}h {totalMinutes}min)</span>}</h3>
                 {!showCollabForm && <button type="button" onClick={() => setShowCollabForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar</button>}
@@ -865,7 +892,7 @@ export default function TicketForm() {
             </div>
 
             {/* Tickets Relacionados */}
-            <div className={`${sectionClass}${activeTab !== 'relacoes' ? ' hidden' : ''}`}>
+            <div style={{display: activeTab === 'relacoes' ? 'block' : 'none'}}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Tickets Relacionados</h3>
                 {!showRelForm && <button type="button" onClick={() => setShowRelForm(true)} className="text-indigo-600 text-sm hover:underline">+ Associar Ticket</button>}
@@ -914,7 +941,7 @@ export default function TicketForm() {
 
         {/* ── CONVERSA TAB ── */}
         {isEdit && id && (
-          <div className={`${sectionClass}${activeTab !== 'conversa' ? ' hidden' : ''}`}>
+          <div style={{display: activeTab === 'conversa' ? 'block' : 'none'}}>
             <h3 className="text-base font-semibold text-gray-800 mb-3">Conversa</h3>
 
             {/* Add comment */}
@@ -939,18 +966,77 @@ export default function TicketForm() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { if (!commentText.trim()) { alert('Escreva um comentário'); return; } }}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 font-medium"
+                  disabled={postCommentMutation.isPending}
+                  onClick={() => {
+                    if (!commentText.trim()) { alert('Escreva um comentário'); return; }
+                    postCommentMutation.mutate({ body: commentText, is_public: isPublicComment });
+                  }}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 font-medium"
                 >
-                  Publicar
+                  {postCommentMutation.isPending ? 'A publicar...' : 'Publicar'}
                 </button>
               </div>
             </div>
 
-            {/* Placeholder */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
-              <p className="text-sm text-gray-400">Sem comentários ainda.</p>
-            </div>
+            {/* Comments list */}
+            {ticketComments.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
+                <p className="text-sm text-gray-400">Sem comentários ainda.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {ticketComments.map((comment: any) => (
+                  <div
+                    key={comment.id}
+                    className={`bg-white rounded-xl shadow-sm border ${
+                      comment.is_public ? 'border-gray-200' : 'border-yellow-300 border-l-4 border-l-yellow-400'
+                    } p-4`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
+                          comment.author_role === 'admin' ? 'bg-purple-600' :
+                          comment.author_role === 'agent' ? 'bg-indigo-600' : 'bg-gray-500'
+                        }`}>
+                          {comment.author_name ? comment.author_name.charAt(0).toUpperCase() : '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold text-gray-800">{comment.author_name || 'Desconhecido'}</span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              comment.author_role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                              comment.author_role === 'agent' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {comment.author_role === 'admin' ? 'Admin' : comment.author_role === 'agent' ? 'Agente' : 'Cliente'}
+                            </span>
+                            {!comment.is_public && <span className="text-xs">🔒</span>}
+                            {comment.is_public && <span className="text-xs">🌐</span>}
+                          </div>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.body}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {comment.created_at ? new Date(comment.created_at).toLocaleString('pt-BR') : ''}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Delete button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm('Eliminar este comentário?')) {
+                            removeCommentMutation.mutate(comment.id);
+                          }
+                        }}
+                        className="text-gray-400 hover:text-red-500 text-xs px-2 py-1 rounded"
+                        title="Eliminar"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
