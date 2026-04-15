@@ -641,7 +641,7 @@ export default function TicketForm() {
               </div>
             </div>
 
-            <div className={sectionClass}>
+            <div style={{display: activeTab === 'dados' ? 'block' : 'none'}}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Associação</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -662,7 +662,7 @@ export default function TicketForm() {
             </div>
 
             {/* Datas */}
-            <div className={sectionClass}>
+            <div style={{display: activeTab === 'dados' ? 'block' : 'none'}}>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Datas</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div><label className={labelClass}>Data de Abertura</label><input type="datetime-local" value={form.opened_at} disabled className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 text-sm cursor-not-allowed" /></div>
