@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/Layout';
 import {
@@ -10,6 +10,13 @@ import {
   getTicketRelations, addTicketRelation, removeTicketRelation,
   extractErrorMessage,
 } from '../../api/client';
+
+const STEPS = [
+  { n: 2, label: 'Categoria', sub: 'Tipo de atendimento' },
+  { n: 3, label: 'Produtos', sub: 'Produtos associados' },
+  { n: 4, label: 'Equipa', sub: 'Colaboradores' },
+  { n: 5, label: 'Relações', sub: 'Tickets relacionados' },
+];
 
 interface TicketFormData {
   title: string;
@@ -68,6 +75,10 @@ const sectionClass = "bg-gray-50 rounded-lg p-4 mb-4";
 
 export default function TicketForm() {
   const { id } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
+  const wizardStep = searchParams.get('step');
+  const currentStep = wizardStep ? parseInt(wizardStep) : null;
+  const isWizard = currentStep !== null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isEdit = Boolean(id);
@@ -340,300 +351,542 @@ export default function TicketForm() {
   const totalHours = collaborators.reduce((acc, c) => acc + (c.hours_spent || 0) + Math.floor((c.minutes_spent || 0) / 60), 0);
   const totalMinutes = collaborators.reduce((acc, c) => acc + (c.minutes_spent || 0), 0) % 60;
 
+  // Navigate to next wizard step
+  const goNext = async () => {
+    if (!isWizard || !id) return;
+    const next = (currentStep || 2) + 1;
+    if (next > 5) {
+      navigate('/admin/tickets');
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['ticket-products', id] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-collaborators', id] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-relations', id] });
+      navigate(`/admin/tickets/${id}/edit?step=${next}`, { replace: true });
+    }
+  };
+
+  // Persist products to DB (for wizard steps 3+)
+  const persistProducts = async (tid: string) => {
+    for (const p of ticketProducts) {
+      if (p.id.startsWith('temp-')) {
+        await addTicketProduct({ ticket_id: tid, product_id: p.product_id, quantity: p.quantity });
+      }
+    }
+  };
+
+  // Persist collaborators to DB (for wizard steps 4+)
+  const persistCollaborators = async (tid: string) => {
+    for (const c of collaborators) {
+      if (c.id.startsWith('temp-')) {
+        await addTicketCollaborator({ ticket_id: tid, user_id: c.user_id, hours_spent: c.hours_spent, minutes_spent: c.minutes_spent, notes: c.notes });
+      }
+    }
+  };
+
+  // Persist relations to DB (for wizard step 5)
+  const persistRelations = async (tid: string) => {
+    for (const rel of pendingRelations) {
+      if (rel.target_ticket_id) {
+        await addTicketRelation({ source_ticket_id: tid, target_ticket_id: rel.target_ticket_id });
+      }
+    }
+  };
+
+  // Save step 2 (category) and go next
+  const saveCategoryStep = async () => {
+    if (!id) return;
+    await updateTicket(id, { category_id: form.category_id } as any);
+    await goNext();
+  };
+
+  // Save step 3 (products) and go next
+  const saveProductsStep = async () => {
+    if (!id) return;
+    await persistProducts(id);
+    await goNext();
+  };
+
+  // Save step 4 (collaborators) and go next
+  const saveCollaboratorsStep = async () => {
+    if (!id) return;
+    await persistCollaborators(id);
+    await goNext();
+  };
+
+  // Save step 5 (relations) and finish
+  const saveRelationsStep = async () => {
+    if (!id) return;
+    await persistRelations(id);
+    queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    navigate('/admin/tickets');
+  };
+
   const formatBRL = (price: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
   const displayRelations = isEdit ? ticketRelations : pendingRelations;
 
+  // ── Wizard step indicator ──
+  const WizardHeader = () => (
+    <>
+      <div className="flex items-center gap-3 mb-2">
+        <button onClick={() => navigate('/admin/tickets')} className="text-gray-400 hover:text-gray-600 text-sm">
+          ← Voltar
+        </button>
+        <h1 className="text-2xl font-bold text-gray-800">
+          {existingTicket ? (existingTicket as any).title : 'Ticket'}
+        </h1>
+      </div>
+      <div className="flex gap-1 mb-6">
+        {/* Step 1 always done (ticket was created) */}
+        <div className="flex-1">
+          <div className="h-1 rounded-full bg-indigo-500" />
+          <p className="text-xs mt-1 text-indigo-400">Criado</p>
+        </div>
+        {STEPS.map((s) => {
+          const done = (currentStep || 2) > s.n;
+          const active = currentStep === s.n;
+          return (
+            <div key={s.n} className="flex-1">
+              <div className={`h-1 rounded-full transition-all ${done ? 'bg-indigo-500' : active ? 'bg-indigo-300' : 'bg-gray-200'}`} />
+              <p className={`text-xs mt-1 ${active ? 'text-indigo-600 font-semibold' : done ? 'text-indigo-400' : 'text-gray-400'}`}>
+                {s.label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  // ── Wizard step action buttons ──
+  const WizardActions = () => (
+    <div className="flex justify-end gap-3 pt-4 pb-4">
+      <button type="button" onClick={() => navigate('/admin/tickets')} className="px-5 py-2 text-sm text-gray-500 hover:text-gray-700">
+        Cancelar
+      </button>
+      {currentStep === 2 && (
+        <button type="button" onClick={saveCategoryStep} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 font-medium text-sm flex items-center gap-2">
+          Avançar →
+        </button>
+      )}
+      {currentStep === 3 && (
+        <button type="button" onClick={saveProductsStep} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 font-medium text-sm flex items-center gap-2">
+          Avançar →
+        </button>
+      )}
+      {currentStep === 4 && (
+        <button type="button" onClick={saveCollaboratorsStep} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 font-medium text-sm flex items-center gap-2">
+          Avançar →
+        </button>
+      )}
+      {currentStep === 5 && (
+        <button type="button" onClick={saveRelationsStep} className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 font-medium text-sm flex items-center gap-2">
+          Finalizar ✓
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => navigate('/admin/tickets')} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <h2 className="text-2xl font-bold text-gray-800">
-            {isEdit ? `Editar Ticket: ${existingTicket ? (existingTicket as any).title : '...'}` : 'Novo Ticket'}
-          </h2>
-        </div>
+      <div className="max-w-2xl mx-auto px-4 py-8">
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-lg">{error}</div>
-          )}
+        {isWizard && <WizardHeader />}
 
-          {/* Dados do Ticket */}
-          <div className={sectionClass}>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Dados do Ticket</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className={labelClass}>Título *</label>
-                <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className={inputClass} placeholder="Resumo do problema" />
-              </div>
-              <div className="col-span-2">
-                <label className={labelClass}>Descrição *</label>
-                <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={inputClass} rows={3} placeholder="Descrição detalhada do problema..." />
-              </div>
-              <div>
-                <label className={labelClass}>Prioridade</label>
-                <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className={inputClass}>
-                  <option value="low">Baixa</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">Alta</option>
-                  <option value="urgent">Urgente</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Status</label>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputClass}>
-                  <option value="open">Aberto</option>
-                  <option value="pending">Pendente</option>
-                  <option value="in_progress">Em Atendimento</option>
-                  <option value="solved">Resolvido</option>
-                  <option value="closed">Fechado</option>
-                  <option value="reopened">Reaberto</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Categoria</label>
-                <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className={inputClass}>
-                  <option value="">Sem categoria</option>
-                  {(categories as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+        )}
 
-          {/* Associação */}
-          <div className={sectionClass}>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Associação</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Cliente *</label>
-                <select value={form.customer_id} onChange={e => setForm({ ...form, customer_id: e.target.value })} className={inputClass}>
-                  <option value="">Selecionar cliente</option>
-                  {(customers as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Ticket Pai</label>
-                <select value={form.parent_ticket_id} onChange={e => setForm({ ...form, parent_ticket_id: e.target.value })} className={inputClass}>
-                  <option value="">Nenhum</option>
-                  {(allTickets as any[]).filter((t: any) => t.id !== id).map((t: any) => (
-                    <option key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.title}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
+        {/* ── FULL EDIT MODE (no step) ── */}
+        {!isWizard && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-lg">{error}</div>}
 
-          {/* Tickets Relacionados */}
-          <div className={sectionClass}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Tickets Relacionados</h3>
-              {!showRelForm && (
-                <button type="button" onClick={() => setShowRelForm(true)} className="text-indigo-600 text-sm hover:underline">
-                  + Associar Ticket
-                </button>
-              )}
+            <div className="flex items-center gap-4 mb-6">
+              <button type="button" onClick={() => navigate('/admin/tickets')} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <h2 className="text-2xl font-bold text-gray-800">
+                {isEdit ? `Editar Ticket: ${existingTicket ? (existingTicket as any).title : '...'}` : 'Novo Ticket'}
+              </h2>
             </div>
 
-            {showRelForm && (
-              <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
-                <div className="col-span-4">
-                  <label className={labelClass}>Ticket</label>
-                  <select value={newRelTicketId} onChange={e => setNewRelTicketId(e.target.value)} className={inputClass}>
-                    <option value="">Selecionar ticket</option>
-                    {(availableForRel as any[]).map((t: any) => {
-                      const alreadyLinked = isEdit
-                        ? ticketRelations.some(r => r.target_ticket_id === t.id)
-                        : pendingRelations.some(r => r.target_ticket_id === t.id);
-                      if (alreadyLinked) return null;
-                      return <option key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.title}</option>;
-                    })}
-                  </select>
+            <div className={sectionClass}>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Dados do Ticket</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className={labelClass}>Título *</label>
+                  <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className={inputClass} placeholder="Resumo do problema" />
                 </div>
-                <div className="flex gap-2 items-center pb-0.5">
-                  <button type="button" onClick={addRelation} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Associar</button>
-                  <button type="button" onClick={() => { setShowRelForm(false); setNewRelTicketId(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                <div className="col-span-2">
+                  <label className={labelClass}>Descrição *</label>
+                  <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={inputClass} rows={3} placeholder="Descrição detalhada do problema..." />
                 </div>
-              </div>
-            )}
-
-            {displayRelations.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Nenhum ticket relacionado.</p>
-            ) : (
-              <div className="space-y-2">
-                {displayRelations.map((r, idx) => (
-                  <div key={r.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                    <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                    <span className="flex-1 text-sm font-medium text-gray-700">
-                      {r.target_ticket_title || r.target_ticket_id}
-                    </span>
-                    <span className="text-xs text-gray-400">{r.target_ticket_id.slice(0, 8)}</span>
-                    <button type="button" onClick={() => removeRelation(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Datas */}
-          <div className={sectionClass}>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Datas</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className={labelClass}>Data de Abertura</label>
-                <input type="datetime-local" value={form.opened_at} onChange={e => setForm({ ...form, opened_at: e.target.value })} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Data do Atendimento</label>
-                <input type="datetime-local" value={form.attended_at} onChange={e => setForm({ ...form, attended_at: e.target.value })} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Data de Fechamento</label>
-                <input type="datetime-local" value={form.closed_at} onChange={e => setForm({ ...form, closed_at: e.target.value })} className={inputClass} />
-              </div>
-            </div>
-          </div>
-
-          {/* Produtos */}
-          <div className={sectionClass}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Produtos</h3>
-              {!showProdForm && (
-                <button type="button" onClick={() => setShowProdForm(true)} className="text-indigo-600 text-sm hover:underline">
-                  + Adicionar Produto
-                </button>
-              )}
-            </div>
-
-            {showProdForm && (
-              <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
-                <div className="col-span-4">
-                  <label className={labelClass}>Produto</label>
-                  <select data-prod-select value={newProdId} onChange={e => { setNewProdId(e.target.value); pendingProdIdRef.current = e.target.value; setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setShowProdForm(false); } } }} className={inputClass}>
-                    <option value="">Selecionar produto</option>
-                    {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} - {formatBRL(parseFloat(p.price) || 0)}</option>)}
+                <div>
+                  <label className={labelClass}>Prioridade</label>
+                  <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className={inputClass}>
+                    <option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option>
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Qtd</label>
-                  <input type="number" min={1} value={newProdQty} onChange={e => setNewProdQty(parseInt(e.target.value) || 1)} className={inputClass} />
+                  <label className={labelClass}>Status</label>
+                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputClass}>
+                    <option value="open">Aberto</option><option value="pending">Pendente</option><option value="in_progress">Em Atendimento</option><option value="solved">Resolvido</option><option value="closed">Fechado</option><option value="reopened">Reaberto</option>
+                  </select>
                 </div>
-                <div className="flex gap-2 items-center pb-0.5">
-                  <button type="button" onClick={() => { const select = document.querySelector('[data-prod-select]') as HTMLSelectElement; const val = newProdId || pendingProdIdRef.current || (select?.value || ''); if (!val) { setProdError('Selecione um produto.'); return; } const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setNewProdId(''); pendingProdIdRef.current = ''; setNewProdQty(1); setShowProdForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
-                  <button type="button" onClick={() => { setShowProdForm(false); setNewProdId(''); setNewProdQty(1); setProdError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                <div>
+                  <label className={labelClass}>Categoria</label>
+                  <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className={inputClass}>
+                    <option value="">Sem categoria</option>
+                    {(categories as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
-                {prodError && <p className="col-span-6 text-sm text-red-500">{prodError}</p>}
               </div>
-            )}
+            </div>
 
-            {ticketProducts.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Nenhum produto adicionado.</p>
-            ) : (
-              <div className="space-y-2">
-                {ticketProducts.map((p, idx) => {
-                  const prod = (products as any[]).find((pr: any) => pr.id === p.product_id);
-                  const price = parseFloat(prod?.price) || 0;
-                  return (
-                    <div key={p.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                      <span className="flex-1 text-sm font-medium text-gray-700">{p.product_name || prod?.name || p.product_id}</span>
-                      {price > 0 && (
-                        <>
-                          <span className="text-xs text-gray-500">× {p.quantity}</span>
-                          <span className="text-xs font-medium text-indigo-600">{formatBRL(price * p.quantity)}</span>
-                        </>
-                      )}
-                      <button type="button" onClick={() => removeProduct(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+            <div className={sectionClass}>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Associação</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Cliente *</label>
+                  <select value={form.customer_id} onChange={e => setForm({ ...form, customer_id: e.target.value })} className={inputClass}>
+                    <option value="">Selecionar cliente</option>
+                    {(customers as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Ticket Pai</label>
+                  <select value={form.parent_ticket_id} onChange={e => setForm({ ...form, parent_ticket_id: e.target.value })} className={inputClass}>
+                    <option value="">Nenhum</option>
+                    {(allTickets as any[]).filter((t: any) => t.id !== id).map((t: any) => <option key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.title}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Datas */}
+            <div className={sectionClass}>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Datas</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div><label className={labelClass}>Data de Abertura</label><input type="datetime-local" value={form.opened_at} onChange={e => setForm({ ...form, opened_at: e.target.value })} className={inputClass} /></div>
+                <div><label className={labelClass}>Data do Atendimento</label><input type="datetime-local" value={form.attended_at} onChange={e => setForm({ ...form, attended_at: e.target.value })} className={inputClass} /></div>
+                <div><label className={labelClass}>Data de Fechamento</label><input type="datetime-local" value={form.closed_at} onChange={e => setForm({ ...form, closed_at: e.target.value })} className={inputClass} /></div>
+              </div>
+            </div>
+
+            {/* Produtos */}
+            <div className={sectionClass}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Produtos</h3>
+                {!showProdForm && <button type="button" onClick={() => setShowProdForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar Produto</button>}
+              </div>
+              {showProdForm && (
+                <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
+                  <div className="col-span-4">
+                    <label className={labelClass}>Produto</label>
+                    <select data-prod-select value={newProdId} onChange={e => { setNewProdId(e.target.value); pendingProdIdRef.current = e.target.value; setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setShowProdForm(false); } } }} className={inputClass}>
+                      <option value="">Selecionar produto</option>
+                      {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} - {formatBRL(parseFloat(p.price) || 0)}</option>)}
+                    </select>
+                  </div>
+                  <div><label className={labelClass}>Qtd</label><input type="number" min={1} value={newProdQty} onChange={e => setNewProdQty(parseInt(e.target.value) || 1)} className={inputClass} /></div>
+                  <div className="flex gap-2 items-center pb-0.5">
+                    <button type="button" onClick={() => { const select = document.querySelector('[data-prod-select]') as HTMLSelectElement; const val = newProdId || pendingProdIdRef.current || (select?.value || ''); if (!val) { setProdError('Selecione um produto.'); return; } const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setNewProdId(''); pendingProdIdRef.current = ''; setNewProdQty(1); setShowProdForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
+                    <button type="button" onClick={() => { setShowProdForm(false); setNewProdId(''); setNewProdQty(1); setProdError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                  {prodError && <p className="col-span-6 text-sm text-red-500">{prodError}</p>}
+                </div>
+              )}
+              {ticketProducts.length === 0 ? <p className="text-sm text-gray-400 italic">Nenhum produto adicionado.</p> : (
+                <div className="space-y-2">
+                  {ticketProducts.map((p, idx) => {
+                    const prod = (products as any[]).find((pr: any) => pr.id === p.product_id);
+                    const price = parseFloat(prod?.price) || 0;
+                    return (
+                      <div key={p.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                        <span className="flex-1 text-sm font-medium text-gray-700">{p.product_name || prod?.name || p.product_id}</span>
+                        {price > 0 && <><span className="text-xs text-gray-500">× {p.quantity}</span><span className="text-xs font-medium text-indigo-600">{formatBRL(price * p.quantity)}</span></>}
+                        <button type="button" onClick={() => removeProduct(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Colaboradores */}
+            <div className={sectionClass}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Colaboradores {collaborators.length > 0 && <span className="ml-2 text-xs font-normal text-gray-500">(Total: {totalHours}h {totalMinutes}min)</span>}</h3>
+                {!showCollabForm && <button type="button" onClick={() => setShowCollabForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar</button>}
+              </div>
+              {showCollabForm && (
+                <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                  <div>
+                    <label className={labelClass}>Colaborador</label>
+                    <select data-collab-select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); pendingCollabUserIdRef.current = e.target.value; setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setShowCollabForm(false); } } }} className={inputClass}>
+                      <option value="">Selecionar</option>
+                      {collaboratorsOptions.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Colaborador'})</option>)}
+                    </select>
+                  </div>
+                  <div><label className={labelClass}>Horas</label><input type="number" min={0} value={newCollabHours} onChange={e => setNewCollabHours(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" /></div>
+                  <div><label className={labelClass}>Minutos</label><input type="number" min={0} max={59} value={newCollabMinutes} onChange={e => setNewCollabMinutes(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" /></div>
+                  <div className="flex items-end gap-2">
+                    <button type="button" onClick={() => { const select = document.querySelector('[data-collab-select]') as HTMLSelectElement; const val = newCollabUserId || pendingCollabUserIdRef.current || (select?.value || ''); if (!val) { setCollabError('Selecione um colaborador.'); return; } const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setNewCollabUserId(''); pendingCollabUserIdRef.current = ''; setNewCollabHours(0); setNewCollabMinutes(0); setNewCollabNotes(''); setShowCollabForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
+                    <button type="button" onClick={() => { setShowCollabForm(false); setNewCollabUserId(''); setCollabError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                  {collabError && <p className="col-span-4 text-sm text-red-500">{collabError}</p>}
+                  <div className="col-span-4"><label className={labelClass}>Notas</label><input type="text" value={newCollabNotes} onChange={e => setNewCollabNotes(e.target.value)} className={inputClass} placeholder="Notas sobre o trabalho realizado..." /></div>
+                </div>
+              )}
+              {collaborators.length === 0 ? <p className="text-sm text-gray-400 italic">Nenhum colaborador adicionado.</p> : (
+                <div className="space-y-2">
+                  {collaborators.map((c, idx) => (
+                    <div key={c.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                      <span className="flex-1 text-sm font-medium text-gray-700">{c.user_name || c.user_id}</span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">{c.hours_spent}h {c.minutes_spent}min</span>
+                      {c.notes && <span className="text-xs text-gray-400 italic truncate max-w-48">{c.notes}</span>}
+                      <button type="button" onClick={() => removeCollaborator(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Colaboradores */}
-          <div className={sectionClass}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                Colaboradores
-                {collaborators.length > 0 && (
-                  <span className="ml-2 text-xs font-normal text-gray-500">
-                    (Total: {totalHours}h {totalMinutes}min)
-                  </span>
-                )}
-              </h3>
-              {!showCollabForm && (
-                <button type="button" onClick={() => setShowCollabForm(true)} className="text-indigo-600 text-sm hover:underline">
-                  + Adicionar Colaborador
-                </button>
+                  ))}
+                </div>
               )}
             </div>
 
-            {showCollabForm && (
-              <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200">
-                <div>
-                  <label className={labelClass}>Colaborador</label>
-                  <select data-collab-select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); pendingCollabUserIdRef.current = e.target.value; setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setShowCollabForm(false); } } }} className={inputClass}>
-                    <option value="">Selecionar</option>
-                    {collaboratorsOptions.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Colaborador'})</option>)}
+            {/* Tickets Relacionados */}
+            <div className={sectionClass}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Tickets Relacionados</h3>
+                {!showRelForm && <button type="button" onClick={() => setShowRelForm(true)} className="text-indigo-600 text-sm hover:underline">+ Associar Ticket</button>}
+              </div>
+              {showRelForm && (
+                <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-200 items-end">
+                  <div className="col-span-4">
+                    <label className={labelClass}>Ticket</label>
+                    <select value={newRelTicketId} onChange={e => setNewRelTicketId(e.target.value)} className={inputClass}>
+                      <option value="">Selecionar ticket</option>
+                      {(availableForRel as any[]).map((t: any) => {
+                        const alreadyLinked = isEdit ? ticketRelations.some(r => r.target_ticket_id === t.id) : pendingRelations.some(r => r.target_ticket_id === t.id);
+                        if (alreadyLinked) return null;
+                        return <option key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.title}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div className="flex gap-2 items-center pb-0.5">
+                    <button type="button" onClick={addRelation} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Associar</button>
+                    <button type="button" onClick={() => { setShowRelForm(false); setNewRelTicketId(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                </div>
+              )}
+              {displayRelations.length === 0 ? <p className="text-sm text-gray-400 italic">Nenhum ticket relacionado.</p> : (
+                <div className="space-y-2">
+                  {displayRelations.map((r, idx) => (
+                    <div key={r.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                      <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                      <span className="flex-1 text-sm font-medium text-gray-700">{r.target_ticket_title || r.target_ticket_id}</span>
+                      <span className="text-xs text-gray-400">{r.target_ticket_id.slice(0, 8)}</span>
+                      <button type="button" onClick={() => removeRelation(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 pb-8">
+              <button type="button" onClick={() => navigate('/admin/tickets')} className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">Voltar</button>
+              <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium">
+                {createMutation.isPending || updateMutation.isPending ? 'A guardar...' : isEdit ? 'Guardar Alterações' : 'Criar Ticket'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── WIZARD MODE (step 2-5) ── */}
+        {isWizard && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+
+            {/* Step 2: Category */}
+            {currentStep === 2 && (
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">2</div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-800">Categoria</h2>
+                    <p className="text-xs text-gray-400">Tipo de atendimento</p>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label className={labelClass}>Categoria</label>
+                  <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className={inputClass} autoFocus>
+                    <option value="">Sem categoria</option>
+                    {(categories as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className={labelClass}>Horas</label>
-                  <input type="number" min={0} value={newCollabHours} onChange={e => setNewCollabHours(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" />
-                </div>
-                <div>
-                  <label className={labelClass}>Minutos</label>
-                  <input type="number" min={0} max={59} value={newCollabMinutes} onChange={e => setNewCollabMinutes(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" />
-                </div>
-                <div className="flex items-end gap-2">
-                  <button type="button" onClick={() => { const select = document.querySelector('[data-collab-select]') as HTMLSelectElement; const val = newCollabUserId || pendingCollabUserIdRef.current || (select?.value || ''); if (!val) { setCollabError('Selecione um colaborador.'); return; } const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setNewCollabUserId(''); pendingCollabUserIdRef.current = ''; setNewCollabHours(0); setNewCollabMinutes(0); setNewCollabNotes(''); setShowCollabForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
-                  <button type="button" onClick={() => { setShowCollabForm(false); setNewCollabUserId(''); setCollabError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
-                </div>
-                {collabError && <p className="col-span-4 text-sm text-red-500">{collabError}</p>}
-                <div className="col-span-4">
-                  <label className={labelClass}>Notas</label>
-                  <input type="text" value={newCollabNotes} onChange={e => setNewCollabNotes(e.target.value)} className={inputClass} placeholder="Notas sobre o trabalho realizado..." />
-                </div>
+                <WizardActions />
               </div>
             )}
 
-            {collaborators.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Nenhum colaborador adicionado.</p>
-            ) : (
-              <div className="space-y-2">
-                {collaborators.map((c, idx) => (
-                  <div key={c.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                    <span className="flex-1 text-sm font-medium text-gray-700">{c.user_name || c.user_id}</span>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      {c.hours_spent}h {c.minutes_spent}min
-                    </span>
-                    {c.notes && <span className="text-xs text-gray-400 italic truncate max-w-48">{c.notes}</span>}
-                    <button type="button" onClick={() => removeCollaborator(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+            {/* Step 3: Products */}
+            {currentStep === 3 && (
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">3</div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-800">Produtos</h2>
+                    <p className="text-xs text-gray-400">Produtos associados ao ticket</p>
                   </div>
-                ))}
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Produtos</h3>
+                    {!showProdForm && <button type="button" onClick={() => setShowProdForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar Produto</button>}
+                  </div>
+                  {showProdForm && (
+                    <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200 items-end">
+                      <div className="col-span-4">
+                        <label className={labelClass}>Produto</label>
+                        <select data-prod-select value={newProdId} onChange={e => { setNewProdId(e.target.value); pendingProdIdRef.current = e.target.value; setProdError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setShowProdForm(false); } } }} className={inputClass}>
+                          <option value="">Selecionar produto</option>
+                          {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} - {formatBRL(parseFloat(p.price) || 0)}</option>)}
+                        </select>
+                      </div>
+                      <div><label className={labelClass}>Qtd</label><input type="number" min={1} value={newProdQty} onChange={e => setNewProdQty(parseInt(e.target.value) || 1)} className={inputClass} /></div>
+                      <div className="flex gap-2 items-center pb-0.5">
+                        <button type="button" onClick={() => { const select = document.querySelector('[data-prod-select]') as HTMLSelectElement; const val = newProdId || pendingProdIdRef.current || (select?.value || ''); if (!val) { setProdError('Selecione um produto.'); return; } const prod = (products as any[]).find((p: any) => p.id === val); const newTp: TicketProduct = { id: `temp-${Date.now()}`, ticket_id: id || '', product_id: val, product_name: prod?.name || '', quantity: newProdQty }; setTicketProducts(prev => [...prev, newTp]); setNewProdId(''); pendingProdIdRef.current = ''; setNewProdQty(1); setShowProdForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
+                        <button type="button" onClick={() => { setShowProdForm(false); setNewProdId(''); setNewProdQty(1); setProdError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                      {prodError && <p className="col-span-6 text-sm text-red-500">{prodError}</p>}
+                    </div>
+                  )}
+                  {ticketProducts.length === 0 ? <p className="text-sm text-gray-400 italic">Nenhum produto adicionado.</p> : (
+                    <div className="space-y-2">
+                      {ticketProducts.map((p, idx) => {
+                        const prod = (products as any[]).find((pr: any) => pr.id === p.product_id);
+                        const price = parseFloat(prod?.price) || 0;
+                        return (
+                          <div key={p.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <span className="flex-1 text-sm font-medium text-gray-700">{p.product_name || prod?.name || p.product_id}</span>
+                            {price > 0 && <><span className="text-xs text-gray-500">× {p.quantity}</span><span className="text-xs font-medium text-indigo-600">{formatBRL(price * p.quantity)}</span></>}
+                            <button type="button" onClick={() => removeProduct(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <WizardActions />
+              </div>
+            )}
+
+            {/* Step 4: Collaborators */}
+            {currentStep === 4 && (
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">4</div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-800">Equipa</h2>
+                    <p className="text-xs text-gray-400">Colaboradores que vão actuar neste ticket</p>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">
+                      Colaboradores {collaborators.length > 0 && <span className="ml-2 text-xs font-normal text-gray-500">(Total: {totalHours}h {totalMinutes}min)</span>}
+                    </h3>
+                    {!showCollabForm && <button type="button" onClick={() => setShowCollabForm(true)} className="text-indigo-600 text-sm hover:underline">+ Adicionar</button>}
+                  </div>
+                  {showCollabForm && (
+                    <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div>
+                        <label className={labelClass}>Colaborador</label>
+                        <select data-collab-select value={newCollabUserId} onChange={e => { setNewCollabUserId(e.target.value); pendingCollabUserIdRef.current = e.target.value; setCollabError(''); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const select = e.target as HTMLSelectElement; const idx = select.selectedIndex; if (idx > 0) { const val = select.options[idx].value; const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setShowCollabForm(false); } } }} className={inputClass}>
+                          <option value="">Selecionar</option>
+                          {collaboratorsOptions.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Colaborador'})</option>)}
+                        </select>
+                      </div>
+                      <div><label className={labelClass}>Horas</label><input type="number" min={0} value={newCollabHours} onChange={e => setNewCollabHours(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" /></div>
+                      <div><label className={labelClass}>Minutos</label><input type="number" min={0} max={59} value={newCollabMinutes} onChange={e => setNewCollabMinutes(parseInt(e.target.value) || 0)} className={inputClass} placeholder="0" /></div>
+                      <div className="flex items-end gap-2">
+                        <button type="button" onClick={() => { const select = document.querySelector('[data-collab-select]') as HTMLSelectElement; const val = newCollabUserId || pendingCollabUserIdRef.current || (select?.value || ''); if (!val) { setCollabError('Selecione um colaborador.'); return; } const user = collaboratorsOptions.find((u: any) => u.id === val); const newCollab: TicketCollaborator = { id: `temp-${Date.now()}`, ticket_id: id || '', user_id: val, user_name: user?.name || '', hours_spent: newCollabHours, minutes_spent: newCollabMinutes, notes: newCollabNotes }; setCollaborators(prev => [...prev, newCollab]); setNewCollabUserId(''); pendingCollabUserIdRef.current = ''; setNewCollabHours(0); setNewCollabMinutes(0); setNewCollabNotes(''); setShowCollabForm(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Adicionar</button>
+                        <button type="button" onClick={() => { setShowCollabForm(false); setNewCollabUserId(''); setCollabError(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                      {collabError && <p className="col-span-4 text-sm text-red-500">{collabError}</p>}
+                      <div className="col-span-4"><label className={labelClass}>Notas</label><input type="text" value={newCollabNotes} onChange={e => setNewCollabNotes(e.target.value)} className={inputClass} placeholder="Notas sobre o trabalho realizado..." /></div>
+                    </div>
+                  )}
+                  {collaborators.length === 0 ? <p className="text-sm text-gray-400 italic">Nenhum colaborador adicionado.</p> : (
+                    <div className="space-y-2">
+                      {collaborators.map((c, idx) => (
+                        <div key={c.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <span className="flex-1 text-sm font-medium text-gray-700">{c.user_name || c.user_id}</span>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">{c.hours_spent}h {c.minutes_spent}min</span>
+                          {c.notes && <span className="text-xs text-gray-400 italic truncate max-w-48">{c.notes}</span>}
+                          <button type="button" onClick={() => removeCollaborator(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <WizardActions />
+              </div>
+            )}
+
+            {/* Step 5: Relations */}
+            {currentStep === 5 && (
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">5</div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-800">Relações</h2>
+                    <p className="text-xs text-gray-400">Tickets relacionados</p>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Tickets Relacionados</h3>
+                    {!showRelForm && <button type="button" onClick={() => setShowRelForm(true)} className="text-indigo-600 text-sm hover:underline">+ Associar Ticket</button>}
+                  </div>
+                  {showRelForm && (
+                    <div className="grid grid-cols-6 gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200 items-end">
+                      <div className="col-span-4">
+                        <label className={labelClass}>Ticket</label>
+                        <select value={newRelTicketId} onChange={e => setNewRelTicketId(e.target.value)} className={inputClass}>
+                          <option value="">Selecionar ticket</option>
+                          {(availableForRel as any[]).map((t: any) => {
+                            const alreadyLinked = pendingRelations.some(r => r.target_ticket_id === t.id);
+                            if (alreadyLinked) return null;
+                            return <option key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.title}</option>;
+                          })}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 items-center pb-0.5">
+                        <button type="button" onClick={addRelation} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Associar</button>
+                        <button type="button" onClick={() => { setShowRelForm(false); setNewRelTicketId(''); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                    </div>
+                  )}
+                  {displayRelations.length === 0 ? <p className="text-sm text-gray-400 italic">Nenhum ticket relacionado.</p> : (
+                    <div className="space-y-2">
+                      {displayRelations.map((r, idx) => (
+                        <div key={r.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                          <span className="flex-1 text-sm font-medium text-gray-700">{r.target_ticket_title || r.target_ticket_id}</span>
+                          <span className="text-xs text-gray-400">{r.target_ticket_id.slice(0, 8)}</span>
+                          <button type="button" onClick={() => removeRelation(idx)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <WizardActions />
               </div>
             )}
           </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-2 pb-8">
-            <button type="button" onClick={() => navigate('/admin/tickets')} className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">
-              Voltar
-            </button>
-            <button type="submit" disabled={createMutation.isPending || updateMutation.isPending}
-              className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium">
-              {createMutation.isPending || updateMutation.isPending ? 'A guardar...' : isEdit ? 'Guardar Alterações' : 'Criar Ticket'}
-            </button>
-          </div>
-        </form>
+        )}
       </div>
     </Layout>
   );
