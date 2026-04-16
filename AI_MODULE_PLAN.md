@@ -144,13 +144,16 @@ CREATE INDEX idx_ai_exec_pending   ON ai_workflow_executions(scheduled_at)
 
 ### 4.2 — `ai_approvals`
 
-Aprovações humanas pendentes e histórico.
+Aprovações humanas pendentes e histórico. Todos os campos de monitoring
+permitem avaliar a precisão da IA ao longo do tempo.
 
 ```sql
 CREATE TABLE ai_approvals (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     execution_id     UUID NOT NULL REFERENCES ai_workflow_executions(id),
     ticket_id        UUID NOT NULL REFERENCES tickets(id),
+
+    -- Identificação do pedido
     approval_type    VARCHAR(50) NOT NULL,
         -- 'classify_confirm'    — classificação de priority/intent crítica
         -- 'response_confirm'   — resposta com acção operacional
@@ -159,6 +162,18 @@ CREATE TABLE ai_approvals (
         -- 'sla_override'        — override de SLA
     step_description TEXT NOT NULL,             -- "IA sugere: priority=urgent..."
     ai_suggestion    JSONB NOT NULL,           -- {priority, confidence, reason, ...}
+
+    -- ── Monitoring / Avaliação ──────────────────────────────
+    confidence       DECIMAL(5,4),             -- confiança AI no momento da sugestão
+    ticket_priority  VARCHAR(20),             -- priority do ticket nesse momento
+    ticket_category  VARCHAR(100),            -- category do ticket nesse momento
+    auto_skipped     BOOLEAN DEFAULT FALSE,   -- TRUE se regra disparou (mesmo em dry_run)
+    matched_rule_id  UUID REFERENCES ai_approval_rules(id),
+                                                -- qual regra fez match (pode ser NULL)
+    dry_run          BOOLEAN DEFAULT TRUE,   -- TRUE = era dry_run (só regista, não aprova)
+    rule_action      VARCHAR(20),            -- acção da regra que disparou (auto_approve etc)
+
+    -- Decisão humana
     human_decision   VARCHAR(20),              -- approved | rejected | expired | null
     human_notes      TEXT,
     approver_user_id UUID REFERENCES users(id),
@@ -169,9 +184,12 @@ CREATE TABLE ai_approvals (
 );
 
 CREATE INDEX idx_ai_appr_execution  ON ai_approvals(execution_id);
-CREATE INDEX idx_ai_appr_pending    ON ai_approvals(created_at)
+CREATE INDEX idx_ai_appr_pending   ON ai_approvals(created_at)
                                      WHERE human_decision IS NULL;
 CREATE INDEX idx_ai_appr_ticket     ON ai_approvals(ticket_id);
+CREATE INDEX idx_ai_appr_type       ON ai_approvals(approval_type);
+CREATE INDEX idx_ai_appr_auto       ON ai_approvals(auto_skipped)
+                                     WHERE auto_skipped = TRUE;
 ```
 
 ### 4.3 — `ai_audit_log`
@@ -244,9 +262,34 @@ CREATE INDEX idx_ai_sugg_applied  ON ai_ticket_suggestions(applied)
                                    WHERE applied = FALSE;
 ```
 
-### 4.5 — `ai_embeddings` (vectores KB)
+### 4.5 — `ai_embeddings` + Pipeline de PDF + Chunking KB
 
 Embeddings dos artigos da Base de Conhecimento para RAG.
+Suporta extração de texto de **PDFs anexados aos artigos KB**,
+segmentação em chunks de ~500 caracteres, e pesquisa semântica.
+
+**Fontes de conteúdo para embedding:**
+
+| source_type | Origem | Exemplo |
+|---|---|---|
+| `article_body` | Corpo do artigo KB | texto do markdown |
+| `article_attachment` | Anexo PDF do artigo KB | manual, documentação |
+| `ticket_history` | Histórico de tickets passados | tickets resolvidos similares |
+
+**Pipeline de indexing (quando artigo KB é criado/atualizado):**
+
+```
+1. Extrair texto do corpo do artigo (markdown → plain text)
+2. Para cada anexo PDF:
+     a) Baixar ficheiro de /tmp/kb_uploads/
+     b) Extrair texto com PyPDF2 / pdfplumber
+     c) Chunkar em segmentos de ~500 caracteres (overlap 50 chars)
+     d) Para cada chunk: gerar embedding MiniMax
+     e) Guardar em ai_embeddings com source_type e metadata
+3. Eliminar chunks órfãos do artigo (que já não existem)
+```
+
+**Extensão da tabela `ai_embeddings`:**
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -254,16 +297,236 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE ai_embeddings (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     article_id       UUID NOT NULL REFERENCES kb_articles(id) ON DELETE CASCADE,
+    source_type      VARCHAR(30) NOT NULL,
+        -- 'article_body' | 'article_attachment' | 'ticket_history'
+    source_id        UUID,                        -- attachment_id se for PDF
     chunk_index      INTEGER NOT NULL,
-    content_chunk    TEXT NOT NULL,             -- texto segmentado (500-1000 chars)
-    embedding        VECTOR(1024),             -- MiniMax embeddings (dimension=1024)
+    content_chunk    TEXT NOT NULL,               -- texto segmentado
+    embedding        VECTOR(1024),                -- MiniMax embeddings (dim=1024)
+    metadata         JSONB,                       -- {page, filename, char_count}
     created_at       TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_emb_article  ON ai_embeddings(article_id);
+CREATE INDEX idx_emb_source  ON ai_embeddings(article_id, source_type);
 CREATE INDEX idx_emb_cosine  ON ai_embeddings USING ivfflat
                                (embedding vector_cosine_ops)
                                WITH (lists = 100);
+```
+
+**Livrarias para extracção de PDF:**
+
+```python
+import pdfplumber       # extracção de texto com layout preservation
+import pypdf            # alternativa mais leve
+
+def extract_pdf_text(file_path: str) -> str:
+    """Extrai texto completo de um PDF, página a página."""
+    with pdfplumber.open(file_path) as pdf:
+        return "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    """Segmenta texto em chunks com overlap."""
+    chunks = []
+    for i in range(0, len(text), chunk_size - overlap):
+        chunk = text[i:i + chunk_size]
+        if len(chunk) > 50:   # descartar chunks muito pequenos
+            chunks.append(chunk.strip())
+    return chunks
+```
+
+**Embedding com MiniMax:**
+
+```python
+from langchain_openai import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings(
+    model="minimaxi/e5-embedding-02",  # MiniMax e5-embedding-02 (dim=1024)
+    openai_api_key=MINIMAX_API_KEY,
+    openai_api_base="https://api.minimax.chat/v1",
+)
+```
+
+**Pesquisa RAG (no workflow LangGraph):**
+
+```python
+def rag_lookup(query: str, article_ids: list[str] = None, top_k: int = 5):
+    """
+    1. Gera embedding da query com MiniMax
+    2. Busca top_k chunks mais similares (cosine similarity)
+    3. Se article_ids: filtra só chunks desses artigos
+    4. Retorna chunks + score de similaridade
+    """
+    query_embedding = embeddings.embed_query(query)
+
+    sql = """
+        SELECT content_chunk, article_id, source_type,
+               1 - (embedding <=> %s::vector) AS similarity
+        FROM ai_embeddings
+        WHERE (%s::uuid[] IS NULL OR article_id = ANY(%s::uuid[]))
+          AND source_type IN ('article_body', 'article_attachment')
+        ORDER BY embedding <=> %s::vector
+        LIMIT %s
+    """
+    results = db.execute(sql, [query_embedding, article_ids, article_ids,
+                                query_embedding, top_k])
+    return [dict(row) for row in results]
+```
+
+
+### 4.7 — `ai_approval_feedback` — Avaliação Post-Hoc
+
+Avaliação granular de cada decisão de aprovação. Permite ao supervisor
+classificar se a IA estava correcta, semi-correcta ou errada — criando
+um ciclo de feedback para ajustar os limiares de auto-aprovação.
+
+```sql
+CREATE TABLE ai_approval_feedback (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    approval_id      UUID NOT NULL REFERENCES ai_approvals(id),
+
+    -- Avaliação do supervisor
+    ai_correct       VARCHAR(20) NOT NULL,
+        -- 'correct'       — IA acertou na sugestão
+        -- 'partial'       — parcialmente correcto (aprovou com mods)
+        -- 'wrong'         — IA sugeriu algo inadequado
+        -- 'unnecessary'  — não precisava de aprovação (auto-era)
+    evaluator_id     UUID REFERENCES users(id),    -- quem avaliou
+    evaluation_notes TEXT,
+    evaluated_at     TIMESTAMP DEFAULT NOW(),
+
+    -- Dados preservados para análise
+    -- (cópia do estado no momento — não altera mesmo que ticket mude)
+    suggestion_snapshot JSONB,    -- ai_suggestion na altura
+    ticket_snapshot     JSONB,    -- ticket data na altura
+    resolution_time_minutes INTEGER,  -- tempo desde criação do ticket
+    created_at        TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(approval_id)   -- só uma avaliação por aprovação
+);
+
+CREATE INDEX idx_ai_fb_approval  ON ai_approval_feedback(approval_id);
+CREATE INDEX idx_ai_fb_correct  ON ai_approval_feedback(ai_correct);
+CREATE INDEX idx_ai_fb_evaluator ON ai_approval_feedback(evaluator_id);
+```
+
+### 4.8 — `ai_approval_metrics` — Métricas Agregadas
+
+Métricas agregadas por tipo de aprovação. Actualizadasperiodicamente
+(pode ser uma view SQL ou uma scheduled task).
+
+```sql
+CREATE TABLE ai_approval_metrics (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    period_start     TIMESTAMP NOT NULL,        -- início do período (dia/semana)
+    period_end       TIMESTAMP NOT NULL,        -- fim do período
+    granularity      VARCHAR(10) NOT NULL,      -- 'daily' | 'weekly' | 'monthly'
+
+    -- Dimensões
+    approval_type    VARCHAR(50) NOT NULL,     -- classify_confirm, response_confirm...
+    ticket_priority  VARCHAR(20),              -- low, normal, high, urgent, ALL
+    ticket_category  VARCHAR(100),             -- categoria ou ALL
+
+    -- Métricas
+    total_count      INTEGER DEFAULT 0,
+    approved_count   INTEGER DEFAULT 0,
+    rejected_count   INTEGER DEFAULT 0,
+    expired_count    INTEGER DEFAULT 0,
+    auto_skipped_count INTEGER DEFAULT 0,
+
+    approval_rate    DECIMAL(5,4) GENERATED ALWAYS AS
+                     (CASE WHEN total_count > 0
+                      THEN approved_count::decimal / total_count
+                      ELSE 0 END) STORED,
+
+    avg_confidence   DECIMAL(5,4),
+    avg_resolution_minutes INTEGER,
+
+    -- Feedback post-hoc (quando existir)
+    correct_count    INTEGER DEFAULT 0,
+    partial_count    INTEGER DEFAULT 0,
+    wrong_count      INTEGER DEFAULT 0,
+    ai_accuracy      DECIMAL(5,4) GENERATED ALWAYS AS
+                     (CASE WHEN (correct_count + wrong_count) > 0
+                      THEN correct_count::decimal
+                           / (correct_count + wrong_count)
+                      ELSE 0 END) STORED,
+
+    -- Meta: limiar actual dessa regra
+    current_threshold DECIMAL(5,4),
+    rule_enabled     BOOLEAN DEFAULT FALSE,
+
+    updated_at       TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(period_start, period_end, granularity,
+            approval_type, ticket_priority, ticket_category)
+);
+
+CREATE INDEX idx_ai_met_type     ON ai_approval_metrics(approval_type);
+CREATE INDEX idx_ai_met_period   ON ai_approval_metrics(period_start DESC);
+CREATE INDEX idx_ai_met_accuracy ON ai_approval_metrics(ai_accuracy)
+                                   WHERE ai_accuracy > 0;
+```
+
+### 4.9 — `ai_approval_rules` — Regras de Auto-Aprovação
+
+Regras configuráveis que determinam quando skipar a aprovação humana
+com base em confiança, tipo e priority. Podem ser ajustadas manualmente
+ou geradas automaticamente com base nas métricas.
+
+> ⚠️ **MODO MONITORIZAÇÃO (Fase actual):** O campo `dry_run = TRUE` por defeito.
+> Isto significa que as regras **apenas reginam/metricam** — nunca auto-aprovam
+> nem auto-rejeitam sozinhas. O `action` é gravado em `ai_approvals.auto_skipped`
+> para fins de análise, mas a aprovação humana é **sempre requerida**.
+> Quando `dry_run = FALSE`, a acção é realmente executada — mas isso só
+> será activado numa fase posterior, após validação das métricas.
+
+```sql
+CREATE TABLE ai_approval_rules (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Identificação
+    name             VARCHAR(100) NOT NULL,    -- "Auto-aprov. classify high-conf"
+    description      TEXT,
+
+    -- Condições de match (TODAS têm de ser verdadeiras)
+    approval_type    VARCHAR(50) NOT NULL,     -- classify_confirm, response_confirm...
+    min_confidence   DECIMAL(5,4) DEFAULT 0.70, -- confiança mínima AI (0.00-1.00)
+    ticket_priority  VARCHAR(20),             -- NULL = qualquer priority
+    ticket_category  VARCHAR(100),            -- NULL = qualquer categoria
+    intent           VARCHAR(50),             -- NULL = qualquer intent
+    language         VARCHAR(10),             -- NULL = qualquer idioma
+
+    -- Resultado da regra (SÓ É APLICADO SE dry_run = FALSE)
+    action           VARCHAR(20) NOT NULL DEFAULT 'require_review',
+        -- 'auto_approve'   — aplica sugestão sem pedir aprovação
+        -- 'auto_reject'    — rejeita e marca como processado
+        -- 'require_review' — obriga aprovação (overrides outras regras)
+
+    -- Controlo
+    is_active        BOOLEAN DEFAULT TRUE,
+    is_system        BOOLEAN DEFAULT FALSE,   -- TRUE = gerada automaticamente
+    dry_run          BOOLEAN DEFAULT TRUE,   -- TRUE = só regista, não executa
+        -- ⚠️ EM FASE ACTUAL, SEMPRE dry_run = TRUE
+        -- Quando dry_run=FALSE e is_active=TRUE, action é executada
+    confidence_feedback_based BOOLEAN DEFAULT FALSE,
+        -- TRUE se o limiar min_confidence foi ajustado
+        -- automaticamente com base em ai_approval_feedback
+
+    -- Metadados
+    created_by       UUID REFERENCES users(id),
+    created_at       TIMESTAMP DEFAULT NOW(),
+    updated_at       TIMESTAMP DEFAULT NOW(),
+    last_triggered_at TIMESTAMP,
+
+    -- Notas de auditoria
+    notes            TEXT,
+    trigger_count    INTEGER DEFAULT 0        -- quantas vezes foi aplicada
+);
+
+CREATE INDEX idx_ai_rule_active  ON ai_approval_rules(is_active)
+                                  WHERE is_active = TRUE;
+CREATE INDEX idx_ai_rule_type   ON ai_approval_rules(approval_type);
 ```
 
 ### 4.6 — Extensões à tabela `tickets` existente
@@ -706,6 +969,18 @@ GET    /api/v1/ai/executions/:id/logs           Logs de auditoria da execução
 GET    /api/v1/ai/stats                         Dashboard: métricas globais
 POST   /api/v1/ai/suggestions/:id/apply        Agente aplica sugestão
 POST   /api/v1/ai/suggestions/:id/reject       Agente rejeita sugestão
+
+# ── Monitoring & Avaliação ─────────────────────────────────────
+GET    /api/v1/ai/feedback                      Lista avaliações (c/ filtros)
+POST   /api/v1/ai/feedback/:approval_id         Criar avaliação post-hoc
+GET    /api/v1/ai/feedback/:approval_id         Detalhe de uma avaliação
+GET    /api/v1/ai/metrics                       Métricas agregadas (por tipo/período)
+GET    /api/v1/ai/rules                         Lista regras de auto-aprovação
+POST   /api/v1/ai/rules                         Criar regra
+PATCH  /api/v1/ai/rules/:id                     Actualizar regra (threshold, active)
+DELETE /api/v1/ai/rules/:id                     Remover regra
+POST   /api/v1/ai/rules/:id/test                Testar regra (simular sem aplicar)
+GET    /api/v1/ai/rules/suggest-threshold       Sugerir threshold com base em métricas
 ```
 
 ### Response — GET /ai/approvals/:id

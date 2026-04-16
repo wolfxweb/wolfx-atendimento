@@ -24,6 +24,11 @@ import KnowledgeBase from './pages/KnowledgeBase';
 import KBArticleDetail from './pages/KBArticleDetail';
 import AdminKB from './pages/admin/AdminKB';
 import AdminCategories from './pages/admin/Categories';
+import AIApprovals from './pages/admin/AIApprovals';
+import AIActivity from './pages/admin/AIActivity';
+import AIMetrics from './pages/admin/AIMetrics';
+import AIRules from './pages/admin/AIRules';
+import KBRAG from './pages/admin/KBRAG';
 import CustomerProducts from './pages/customer/Products';
 
 const queryClient = new QueryClient();
@@ -145,6 +150,21 @@ function AppRoutes() {
       <Route path="/kb/:id" element={<KBArticleDetail />} />
       <Route path="/admin/categories" element={
         <ProtectedRoute roles={['admin']}><AdminCategories /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/aprovacoes" element={
+        <ProtectedRoute roles={['admin']}><AIApprovals /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/actividade" element={
+        <ProtectedRoute roles={['admin']}><AIActivity /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/metricas" element={
+        <ProtectedRoute roles={['admin']}><AIMetrics /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/regras" element={
+        <ProtectedRoute roles={['admin']}><AIRules /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/kb-rag" element={
+        <ProtectedRoute roles={['admin', 'agent']}><KBRAG /></ProtectedRoute>
       } />
 
       <Route path="*" element={<Navigate to="/" replace />} />

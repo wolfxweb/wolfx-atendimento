@@ -463,6 +463,16 @@ export const createKBTag = (name: string) => api.post('/kb/tags', { name });
 
 export const deleteKBTag = (id: string) => api.delete(`/kb/tags/${id}`);
 
+// KB RAG — embeddings / indexing
+export const reindexKBArticle = (articleId: string) =>
+  api.post(`/ai/kb-rag/reindex/${articleId}`);
+
+export const indexAllKBArticles = () =>
+  api.post('/ai/kb-rag/index-all');
+
+export const deleteKBRagIndex = (articleId: string) =>
+  api.delete(`/ai/kb-rag/${articleId}`);
+
 // Users / Colaboradores (admin HR management)
 export const getUsers = (params?: { role?: string; is_active?: boolean }) =>
   api.get('/users', { params });
@@ -521,3 +531,51 @@ export const updateUser = (id: string, data: Partial<{
 }>) => api.patch(`/users/${id}`, data);
 
 export const deleteUser = (id: string) => api.delete(`/users/${id}`);
+
+// AI Executions
+export const getAIExecutions = (params?: { status?: string; limit?: number; offset?: number }) =>
+  api.get('/ai/executions', { params });
+
+export const getAIExecutionLogs = (id: string) => api.get(`/ai/executions/${id}/logs`);
+
+// AI Approvals
+export const getAIApprovals = (params?: { status?: string; limit?: number; offset?: number }) =>
+  api.get('/ai/approvals', { params });
+
+export const approveAIApproval = (id: string, comment?: string) =>
+  api.post(`/ai/approvals/${id}/approve`, { comment });
+
+export const rejectAIApproval = (id: string, comment: string) =>
+  api.post(`/ai/approvals/${id}/reject`, { comment });
+
+// AI Rules
+export const getAIRules = (params?: { is_active?: boolean }) =>
+  api.get('/ai/rules', { params });
+
+export const createAIRule = (data: {
+  name: string;
+  description?: string;
+  priority?: string;
+  category_id?: string;
+  customer_id?: string;
+  action_type: string;
+  action_value?: string;
+  dry_run: boolean;
+  is_active?: boolean;
+  conditions?: Record<string, any>;
+}) => api.post('/ai/rules', data);
+
+export const updateAIRule = (id: string, data: Partial<{
+  name: string;
+  description?: string;
+  priority?: string;
+  category_id?: string;
+  customer_id?: string;
+  action_type: string;
+  action_value?: string;
+  dry_run: boolean;
+  is_active?: boolean;
+  conditions?: Record<string, any>;
+}>) => api.patch(`/ai/rules/${id}`, data);
+
+export const deleteAIRule = (id: string) => api.delete(`/ai/rules/${id}`);
