@@ -130,6 +130,9 @@ class User(Base):
     assigned_tickets = relationship("Ticket", back_populates="agent", foreign_keys="Ticket.agent_id")
     comments = relationship("Comment", back_populates="author")
     approvals = relationship("TicketApproval", back_populates="user")
+    # AI Module Phase 1
+    ai_approvals = relationship("AIApproval", back_populates="approver")
+    ai_feedback_evaluations = relationship("AIApprovalFeedback", back_populates="evaluator")
 
 
 # =====================
@@ -373,6 +376,10 @@ class Ticket(Base):
     approvals = relationship("TicketApproval", back_populates="ticket")
     ticket_relations = relationship("TicketRelation", back_populates="source_ticket", cascade="all, delete-orphan", foreign_keys=[TicketRelation.source_ticket_id])
     sla = relationship("SLA", foreign_keys=[sla_id])
+    # AI Module Phase 1
+    ai_executions  = relationship("AIWorkflowExecution", back_populates="ticket")
+    ai_approvals   = relationship("AIApproval", back_populates="ticket")
+    ai_suggestions = relationship("AITicketSuggestion", back_populates="ticket")
 
 
 # =====================

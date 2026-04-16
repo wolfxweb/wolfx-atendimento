@@ -232,6 +232,7 @@ from app.api.routes import kb
 from app.api.routes.ticket_collaborators import router as ticket_collaborators_router
 from app.api.routes.ticket_products import router as ticket_products_router
 from app.api.routes.ticket_relations import router as ticket_relations_router
+from app.api.routes import ai_approvals, ai_executions, ai_metrics, ai_rules, ai_feedback, ai_suggestions
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
@@ -250,6 +251,14 @@ app.include_router(sla.router, prefix=settings.API_V1_PREFIX, tags=["sla"])
 app.include_router(kb.router, prefix=settings.API_V1_PREFIX, tags=["kb"])
 app.include_router(telegram_webhook.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
 app.include_router(menu.router, prefix=settings.API_V1_PREFIX, tags=["menu"])
+
+# AI Module Phase 1
+app.include_router(ai_approvals.router, prefix=settings.API_V1_PREFIX, tags=["AI Approvals"])
+app.include_router(ai_executions.router, prefix=settings.API_V1_PREFIX, tags=["AI Executions"])
+app.include_router(ai_metrics.router, prefix=settings.API_V1_PREFIX, tags=["AI Metrics"])
+app.include_router(ai_rules.router, prefix=settings.API_V1_PREFIX, tags=["AI Rules"])
+app.include_router(ai_feedback.router, prefix=settings.API_V1_PREFIX, tags=["AI Feedback"])
+app.include_router(ai_suggestions.router, prefix=settings.API_V1_PREFIX, tags=["AI Suggestions"])
 
 
 @app.get("/")
