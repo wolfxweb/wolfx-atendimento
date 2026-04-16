@@ -43,13 +43,13 @@ function SLAGauge({ within = 0, at_risk = 0, breached = 0 }: { within?: number; 
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-3xl font-bold text-gray-800">{pct}%</span>
-          <span className="text-xs text-gray-500">Compliance</span>
+          <span className="text-xs text-gray-500">Conformidade</span>
         </div>
       </div>
       <div className="flex gap-4 mt-3 text-sm">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block"></span>Within {within}</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span>At Risk {at_risk}</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block"></span>Breached {breached}</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block"></span>No Prazo {within}</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span>Em Risco {at_risk}</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block"></span>Vencido {breached}</span>
       </div>
     </div>
   );
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
 
         {/* ── SLA Compliance Section ── */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h3 className="text-base font-semibold text-gray-800 mb-5">Compliance SLA</h3>
+          <h3 className="text-base font-semibold text-gray-800 mb-5">Compliance SLA — Nível de Serviço</h3>
           <div className="flex flex-wrap gap-8 items-center">
             <SLAGauge within={slaWithin} at_risk={slaAtRisk} breached={slaBreached} />
             <div className="flex-1 min-w-[280px]">
