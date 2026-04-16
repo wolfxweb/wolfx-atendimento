@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getMenuItems } from '../api/client';
@@ -43,65 +42,16 @@ function MenuIcon({ name, className = 'w-5 h-5' }: { name?: string; className?: 
 export default function Sidebar() {
   const location = useLocation();
   const { collapsed, setCollapsed } = useSidebar();
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   const { data: menuItems = [], isLoading } = useQuery({
     queryKey: ['menu'],
     queryFn: () => getMenuItems().then(r => r.data as MenuItem[]),
   });
 
-  // Build tree: top-level items with their children nested
-  const topLevel = menuItems.filter(m => !m.parent_id && m.is_active);
-  const childMap = menuItems.reduce((acc, m) => {
-    if (m.parent_id && m.is_active) {
-      if (!acc[m.parent_id]) acc[m.parent_id] = [];
-      acc[m.parent_id].push(m);
-    }
-    return acc;
-  }, {} as Record<string, MenuItem[]>);
-
-  // Parent items (with children) become their own category headers — they are NOT shown as menu links
-  // Standalone items (no children) are shown as direct top-level links, NO category header
-  const grouped: Record<string, MenuItem[]> = {};
-  topLevel.forEach(item => {
-    if (childMap[item.id] && childMap[item.id].length > 0) {
-      // Parent item — use its title as category header, show only children as links
-      grouped[item.title] = childMap[item.id]; // children only, NOT the parent
-    }
-    // Standalone items (no children) are NOT grouped — they're rendered separately
-  });
-
-  // Standalone items sorted by order
-  const standaloneItems = topLevel
-    .filter(item => !childMap[item.id] || childMap[item.id].length === 0)
+  // Flat list — all active items sorted by order, no category grouping
+  const allItems = [...menuItems]
+    .filter(m => m.is_active)
     .sort((a, b) => a.order - b.order);
-
-  Object.keys(grouped).forEach(cat => {
-    grouped[cat].sort((a, b) => a.order - b.order);
-    grouped[cat].forEach(item => {
-      if (childMap[item.id]) {
-        childMap[item.id].sort((a, b) => a.order - b.order);
-      }
-    });
-  });
-
-  // Sort: parents by their order field, then "Geral" at the end
-  const sortedCategories = Object.keys(grouped).sort((a, b) => {
-    if (a === 'Geral') return 1;
-    if (b === 'Geral') return -1;
-    const aOrder = grouped[a][0]?.order || 0;
-    const bOrder = grouped[b][0]?.order || 0;
-    return aOrder - bOrder;
-  });
-
-  const toggleCategory = (category: string) => {
-    setCollapsedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
-  };
 
   const isActive = (href: string) =>
     location.pathname === href || location.pathname.startsWith(href + '/');
@@ -144,21 +94,20 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Menu */}
+        {/* Menu — flat list */}
         <nav className="flex-1 overflow-y-auto py-4">
           {isLoading ? (
             <div className={`text-gray-400 ${collapsed ? 'text-center px-2' : 'px-4 py-2'} text-sm`}>
               {collapsed ? '...' : 'Carregando...'}
             </div>
-          ) : topLevel.length === 0 ? (
+          ) : allItems.length === 0 ? (
             <div className={`text-gray-400 text-sm ${collapsed ? 'text-center px-2' : 'px-4'}`}>
               {collapsed ? '—' : 'Nenhum item no menu.'}
             </div>
           ) : collapsed ? (
-            // Collapsed: show standalone items + children of parent items as icons with tooltips
-            <>
-              {/* Standalone items */}
-              {standaloneItems.map(item => (
+            // Collapsed: icons only with tooltips
+            <div className="space-y-0.5">
+              {allItems.map(item => (
                 <div key={item.id} className="relative group">
                   <Link
                     to={item.href}
@@ -175,36 +124,15 @@ export default function Sidebar() {
                   </div>
                 </div>
               ))}
-              {/* Children of parent items */}
-              {sortedCategories.map(category =>
-                (grouped[category] || []).map(child => (
-                  <div key={child.id} className="relative group">
-                    <Link
-                      to={child.href}
-                      className={`flex items-center justify-center py-1.5 transition-colors ${
-                        isActive(child.href)
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                      }`}
-                    >
-                      <MenuIcon name={child.icon || child.href.split('/').pop()} className="w-4 h-4" />
-                    </Link>
-                    <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
-                      {category} › {child.title}
-                    </div>
-                  </div>
-                ))
-              )}
-            </>
+            </div>
           ) : (
-            // Expanded: standalone items at top + category groups below
-            <>
-              {/* Standalone items (no category header) */}
-              {standaloneItems.map(item => (
+            // Expanded: flat vertical list, no headers
+            <div className="space-y-0.5 px-2">
+              {allItems.map(item => (
                 <Link
                   key={item.id}
                   to={item.href}
-                  className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                     isActive(item.href)
                       ? 'bg-indigo-600 text-white'
                       : 'text-gray-300 hover:bg-gray-800 hover:text-white'
@@ -214,46 +142,7 @@ export default function Sidebar() {
                   <span>{item.title}</span>
                 </Link>
               ))}
-
-              {/* Category groups (parent items as expandable headers) */}
-              {sortedCategories.map(category => (
-                <div key={category} className="mt-2">
-                  {/* Category Header — clickable to expand/collapse */}
-                  <button
-                    onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-white hover:bg-gray-800 transition-colors"
-                  >
-                    <span>{category}</span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${collapsedCategories.has(category) ? '' : 'rotate-90'}`}
-                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-
-                  {/* Children items — only shown when category is expanded */}
-                  {!collapsedCategories.has(category) && grouped[category] && (
-                    <div className="mt-1">
-                      {grouped[category].map(item => (
-                        <Link
-                          key={item.id}
-                          to={item.href}
-                          className={`flex items-center gap-3 pl-10 pr-4 py-2 text-sm transition-colors ${
-                            isActive(item.href)
-                              ? 'bg-indigo-600/50 text-white'
-                              : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                          }`}
-                        >
-                          <MenuIcon name={item.icon || item.href.split('/').pop()} className="w-4 h-4 flex-shrink-0" />
-                          <span>{item.title}</span>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </>
+            </div>
           )}
         </nav>
       </aside>

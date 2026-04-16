@@ -165,15 +165,15 @@ def seed_menu(db: Session):
         return
 
     menu_items = [
-        {"category": "Geral", "title": "Dashboard", "href": "/admin", "icon": "dashboard", "order": 1},
-        {"category": "Geral", "title": "Tickets", "href": "/admin/tickets", "icon": "tickets", "order": 2},
-        {"category": "Geral", "title": "Base de Conhecimento", "href": "/kb", "icon": "kb", "order": 3, "is_active": True},
-        {"category": "Gestao", "title": "Clientes", "href": "/admin/customers", "icon": "customers", "order": 1},
-        {"category": "Gestao", "title": "Agentes", "href": "/admin/agents", "icon": "agents", "order": 2},
-        {"category": "Gestao", "title": "Produtos", "href": "/admin/products", "icon": "products", "order": 3},
-        {"category": "Gestao", "title": "SLAs", "href": "/admin/slas", "icon": "sla", "order": 4},
-        {"category": "Gestao", "title": "Base de Conhecimento", "href": "/admin/kb", "icon": "kb", "order": 5},
-        {"category": "Configuracoes", "title": "Categorias", "href": "/admin/categories", "icon": "default", "order": 1},
+        {"category": "Menu", "title": "Dashboard", "href": "/admin", "icon": "dashboard", "order": 1},
+        {"category": "Menu", "title": "Tickets", "href": "/admin/tickets", "icon": "tickets", "order": 2},
+        {"category": "Menu", "title": "SLAs", "href": "/admin/slas", "icon": "sla", "order": 3},
+        {"category": "Menu", "title": "Clientes", "href": "/admin/customers", "icon": "customers", "order": 4},
+        {"category": "Menu", "title": "Produtos", "href": "/admin/products", "icon": "products", "order": 5},
+        {"category": "Menu", "title": "Colaboradores", "href": "/admin/agents", "icon": "agents", "order": 6},
+        {"category": "Menu", "title": "Categorias", "href": "/admin/categories", "icon": "default", "order": 7},
+        {"category": "Menu", "title": "Base de Conhecimento", "href": "/admin/kb", "icon": "kb", "order": 8},
+        {"category": "Menu", "title": "KB Cliente", "href": "/kb", "icon": "kb", "order": 9, "is_active": True},
     ]
     for item_data in menu_items:
         db.add(MenuItem(**item_data))
