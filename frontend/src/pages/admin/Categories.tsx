@@ -347,15 +347,15 @@ export default function AdminCategories() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
         {['all', 'ticket', 'product'].map(type => (
           <button
             key={type}
             onClick={() => setFilterType(type)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               filterType === type
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             {type === 'all' ? 'Todas' : type === 'ticket' ? 'Tickets' : 'Produtos'}

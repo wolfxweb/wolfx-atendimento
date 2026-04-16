@@ -161,15 +161,15 @@ export default function AdminSLAs() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
           {(['all', 'global', 'custom'] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 filter === f
-                  ? 'bg-indigo-100 text-indigo-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-white text-indigo-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               {f === 'all' ? 'Todos' : f === 'global' ? 'Globais' : 'Personalizados'}

@@ -76,15 +76,15 @@ export default function AdminColaboradores() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
         {['all', 'admin', 'agent'].map(role => (
           <button
             key={role}
             onClick={() => setFilterRole(role)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               filterRole === role
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             {role === 'all' ? 'Todos' : role === 'admin' ? 'Admin' : 'Colaborador'}
