@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:***@postgres_postgres.1.nna9eggrh1nvmhflrrbkxicu6:5432/atendimento_db
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres_postgres.1.nna9eggrh1nvmhflrrbkxicu6:5432/atendimento_db
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=false
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
