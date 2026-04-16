@@ -754,3 +754,117 @@ class MenuItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─────────────────────────────────────────────
+# Knowledge Base (KB)
+# ─────────────────────────────────────────────
+
+class KBCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+
+
+class KBCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    is_active: Optional[bool] = None
+
+
+class KBCategoryResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    children: list = []
+
+    class Config:
+        from_attributes = True
+
+
+class KBTagCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=50)
+
+
+class KBTagResponse(BaseModel):
+    id: UUID
+    name: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KBAttachmentResponse(BaseModel):
+    id: UUID
+    article_id: UUID
+    filename: str
+    original_name: str
+    mime_type: Optional[str] = None
+    file_size: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KBArticleCreate(BaseModel):
+    title: str = Field(..., min_length=3, max_length=255)
+    content: str = Field(..., min_length=10)
+    summary: Optional[str] = None
+    category_id: Optional[UUID] = None
+    status: str = "draft"
+    tags: Optional[List[str]] = []
+
+
+class KBArticleUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    category_id: Optional[UUID] = None
+    status: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class KBArticleListItem(BaseModel):
+    id: UUID
+    title: str
+    summary: Optional[str] = None
+    status: str
+    views: int
+    category_id: Optional[UUID] = None
+    author_id: Optional[UUID] = None
+    author_name: Optional[str] = None
+    category_name: Optional[str] = None
+    tags: List[KBTagResponse] = []
+    attachment_count: int = 0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class KBArticleDetail(BaseModel):
+    id: UUID
+    title: str
+    content: str
+    summary: Optional[str] = None
+    status: str
+    views: int
+    category_id: Optional[UUID] = None
+    author_id: Optional[UUID] = None
+    author_name: Optional[str] = None
+    category_name: Optional[str] = None
+    tags: List[KBTagResponse] = []
+    attachments: List[KBAttachmentResponse] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

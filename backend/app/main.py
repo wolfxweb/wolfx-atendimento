@@ -167,10 +167,12 @@ def seed_menu(db: Session):
     menu_items = [
         {"category": "Geral", "title": "Dashboard", "href": "/admin", "icon": "dashboard", "order": 1},
         {"category": "Geral", "title": "Tickets", "href": "/admin/tickets", "icon": "tickets", "order": 2},
+        {"category": "Geral", "title": "Base de Conhecimento", "href": "/kb", "icon": "kb", "order": 3, "is_active": True},
         {"category": "Gestao", "title": "Clientes", "href": "/admin/customers", "icon": "customers", "order": 1},
         {"category": "Gestao", "title": "Agentes", "href": "/admin/agents", "icon": "agents", "order": 2},
         {"category": "Gestao", "title": "Produtos", "href": "/admin/products", "icon": "products", "order": 3},
         {"category": "Gestao", "title": "SLAs", "href": "/admin/slas", "icon": "sla", "order": 4},
+        {"category": "Gestao", "title": "Base de Conhecimento", "href": "/admin/kb", "icon": "kb", "order": 5},
         {"category": "Configuracoes", "title": "Categorias", "href": "/admin/categories", "icon": "default", "order": 1},
     ]
     for item_data in menu_items:
@@ -225,6 +227,7 @@ app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads"
 
 # Include routers
 from app.api.routes import auth, customers, users, agents, categories, products, tickets, sla, telegram_webhook, menu, parts, product_parts, product_compositions
+from app.api.routes import kb
 from app.api.routes.ticket_collaborators import router as ticket_collaborators_router
 from app.api.routes.ticket_products import router as ticket_products_router
 from app.api.routes.ticket_relations import router as ticket_relations_router
@@ -243,6 +246,7 @@ app.include_router(ticket_collaborators_router, prefix=settings.API_V1_PREFIX, t
 app.include_router(ticket_products_router, prefix=settings.API_V1_PREFIX, tags=["ticket_products"])
 app.include_router(ticket_relations_router, prefix=settings.API_V1_PREFIX, tags=["ticket_relations"])
 app.include_router(sla.router, prefix=settings.API_V1_PREFIX, tags=["sla"])
+app.include_router(kb.router, prefix=settings.API_V1_PREFIX, tags=["kb"])
 app.include_router(telegram_webhook.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
 app.include_router(menu.router, prefix=settings.API_V1_PREFIX, tags=["menu"])
 

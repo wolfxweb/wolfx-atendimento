@@ -403,6 +403,63 @@ export const deleteMenuItem = (id: string) => api.delete(`/menu/${id}`);
 export const createMenuItemsBulk = (items: { category: string; title: string; href: string; icon?: string; order?: number }[]) =>
   api.post('/menu/bulk', items);
 
+// ─── Knowledge Base ───────────────────────────────────────────────
+
+export const getKBCategories = (include_inactive = false) =>
+  api.get('/kb/categories', { params: { include_inactive } });
+
+export const createKBCategory = (data: { name: string; description?: string; parent_id?: string }) =>
+  api.post('/kb/categories', data);
+
+export const updateKBCategory = (id: string, data: Partial<{ name: string; description: string; parent_id: string; is_active: boolean }>) =>
+  api.patch(`/kb/categories/${id}`, data);
+
+export const deleteKBCategory = (id: string) => api.delete(`/kb/categories/${id}`);
+
+export const getKBArticles = (params?: { status?: string; category_id?: string; tag?: string }) =>
+  api.get('/kb/articles', { params });
+
+export const getKBArticle = (id: string) => api.get(`/kb/articles/${id}`);
+
+export const createKBArticle = (data: {
+  title: string; content: string; summary?: string;
+  category_id?: string; status?: string; tags?: string[];
+}) => api.post('/kb/articles', data);
+
+export const updateKBArticle = (id: string, data: Partial<{
+  title: string; content: string; summary: string;
+  category_id: string; status: string; tags: string[];
+}>) => api.patch(`/kb/articles/${id}`, data);
+
+export const deleteKBArticle = (id: string) => api.delete(`/kb/articles/${id}`);
+
+export const searchKBArticles = (q: string) => api.get('/kb/search', { params: { q } });
+
+export const getRelatedArticles = (id: string, limit = 5) =>
+  api.get(`/kb/articles/${id}/related`, { params: { limit } });
+
+export const suggestKBArticles = (text: string, limit = 5) =>
+  api.get('/kb/suggest', { params: { text, limit } });
+
+export const uploadKBAttachment = (articleId: string, file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post(`/kb/articles/${articleId}/attachments`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const deleteKBAttachment = (id: string) => api.delete(`/kb/attachments/${id}`);
+
+export const downloadKBAttachment = (id: string) =>
+  `${import.meta.env.VITE_API_URL || ''}/api/v1/kb/attachments/${id}`;
+
+export const getKBTags = () => api.get('/kb/tags');
+
+export const createKBTag = (name: string) => api.post('/kb/tags', { name });
+
+export const deleteKBTag = (id: string) => api.delete(`/kb/tags/${id}`);
+
 // Users / Colaboradores (admin HR management)
 export const getUsers = (params?: { role?: string; is_active?: boolean }) =>
   api.get('/users', { params });

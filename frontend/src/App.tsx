@@ -20,6 +20,9 @@ import ColaboradorForm from './pages/admin/ColaboradorForm';
 import AdminProducts from './pages/admin/Products';
 import ProductForm from './pages/admin/ProductForm';
 import AdminSLAs from './pages/admin/SLAs';
+import KnowledgeBase from './pages/KnowledgeBase';
+import KBArticleDetail from './pages/KBArticleDetail';
+import AdminKB from './pages/admin/AdminKB';
 import AdminCategories from './pages/admin/Categories';
 import CustomerProducts from './pages/customer/Products';
 
@@ -135,6 +138,11 @@ function AppRoutes() {
       <Route path="/admin/slas" element={
         <ProtectedRoute roles={['admin']}><AdminSLAs /></ProtectedRoute>
       } />
+      <Route path="/admin/kb" element={
+        <ProtectedRoute roles={['admin', 'agent']}><AdminKB /></ProtectedRoute>
+      } />
+      <Route path="/kb" element={<KnowledgeBase />} />
+      <Route path="/kb/:id" element={<KBArticleDetail />} />
       <Route path="/admin/categories" element={
         <ProtectedRoute roles={['admin']}><AdminCategories /></ProtectedRoute>
       } />

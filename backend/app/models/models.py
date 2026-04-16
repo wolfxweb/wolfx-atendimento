@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime, ForeignKey,
-    Numeric, Integer, JSON, Enum as SAEnum, Date, UniqueConstraint
+    Numeric, Integer, JSON, Enum as SAEnum, Date, UniqueConstraint, Table
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
@@ -460,3 +460,75 @@ class SLA(Base):
     # Relacionamentos
     customer = relationship("Customer", backref="slas")
     category = relationship("Category", backref="slas")
+
+
+# ─────────────────────────────────────────────
+# Knowledge Base (KB)
+# ─────────────────────────────────────────────
+
+class KBArticleCategory(Base):
+    __tablename__ = "kb_categories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("kb_categories.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    parent = relationship("KBArticleCategory", remote_side=[id], backref="children")
+    articles = relationship("KBArticle", back_populates="category")
+
+
+class KBArticle(Base):
+    __tablename__ = "kb_articles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)
+    category_id = Column(UUID(as_uuid=True), ForeignKey("kb_categories.id"), nullable=True)
+    status = Column(String(20), default="draft")  # draft | published
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    views = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("KBArticleCategory", back_populates="articles")
+    author = relationship("User")
+    attachments = relationship("KBAttachment", back_populates="article", cascade="all, delete-orphan")
+    tags = relationship("KBTag", secondary="kb_article_tags", back_populates="articles")
+
+
+kb_article_tags = Table(
+    "kb_article_tags",
+    Base.metadata,
+    Column("article_id", UUID(as_uuid=True), ForeignKey("kb_articles.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", UUID(as_uuid=True), ForeignKey("kb_tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class KBTag(Base):
+    __tablename__ = "kb_tags"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(50), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    articles = relationship("KBArticle", secondary=kb_article_tags, back_populates="tags")
+
+
+class KBAttachment(Base):
+    __tablename__ = "kb_attachments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    article_id = Column(UUID(as_uuid=True), ForeignKey("kb_articles.id", ondelete="CASCADE"), nullable=False)
+    filename = Column(String(255), nullable=False)
+    original_name = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    mime_type = Column(String(100), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    article = relationship("KBArticle", back_populates="attachments")
