@@ -161,8 +161,9 @@ def seed_menu(db: Session):
     """Cria menu items padrão (idempotente)"""
     from app.models.models import MenuItem
 
-    if db.query(MenuItem).first():
-        return
+    # Delete existing and re-seed to keep in sync with current seed definition
+    db.query(MenuItem).delete()
+    db.commit()
 
     menu_items = [
         {"category": "Menu", "title": "Dashboard", "href": "/admin", "icon": "dashboard", "order": 1},

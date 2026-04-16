@@ -53,8 +53,14 @@ export default function Sidebar() {
     .filter(m => m.is_active)
     .sort((a, b) => a.order - b.order);
 
-  const isActive = (href: string) =>
-    location.pathname === href || location.pathname.startsWith(href + '/');
+  // Exact match for root paths, prefix match for sub-paths.
+  // /admin matches ONLY /admin (not /admin/tickets)
+  // /admin/tickets matches /admin/tickets and /admin/tickets/123
+  const isActive = (href: string) => {
+    const path = location.pathname;
+    if (href === '/admin') return path === '/admin';
+    return path === href || path.startsWith(href + '/');
+  };
 
   return (
     <>
