@@ -176,6 +176,8 @@ function ArticleManager() {
   const [deleteTarget, setDeleteTarget] = useState<Article | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [tagInput, setTagInput] = useState('');
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ['kb-articles-admin', statusFilter],
@@ -225,11 +227,12 @@ function ArticleManager() {
       status: detail.status,
       tags: detail.tags?.map((t: any) => t.name) || [],
     });
+    setAttachments(detail.attachments || []);
     setFormError('');
     setShowModal(true);
   }
 
-  function closeModal() { setShowModal(false); setEditingArticle(null); setFormError(''); }
+  function closeModal() { setShowModal(false); setEditingArticle(null); setFormError(''); setAttachments([]); }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -248,13 +251,35 @@ function ArticleManager() {
     setForm(f => ({ ...f, tags: f.tags.filter(x => x !== t) }));
   }
 
-  function handleFileUpload(articleId: string, files: FileList | null) {
+  async function handleFileUpload(articleId: string, files: FileList | null) {
     if (!files) return;
-    Array.from(files).forEach(file => {
+    setUploadingFiles(true);
+    try {
+      for (const file of Array.from(files)) {
+        const r = await uploadKBAttachment(articleId, file);
+        setAttachments(prev => [...prev, r.data]);
+        qc.setQueryData(['kb-articles-admin', statusFilter], (old: any[]) =>
+          old?.map(a => a.id === articleId ? { ...a, attachment_count: (a.attachment_count || 0) + 1 } : a)
+        );
+      }
+    } catch (e) {
+      alert('Erro ao carregar anexo: ' + (e as Error).message);
+    } finally {
+      setUploadingFiles(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleDeleteAttachment(attId: string, articleId: string) {
+    try {
+      await deleteKBAttachment(attId);
+      setAttachments(prev => prev.filter(a => a.id !== attId));
       qc.setQueryData(['kb-articles-admin', statusFilter], (old: any[]) =>
-        old?.map(a => a.id === articleId ? { ...a, attachment_count: a.attachment_count + 1 } : a)
+        old?.map(a => a.id === articleId ? { ...a, attachment_count: Math.max((a.attachment_count || 1) - 1, 0) } : a)
       );
-    });
+    } catch (e) {
+      alert('Erro ao eliminar anexo: ' + (e as Error).message);
+    }
   }
 
   return (
@@ -384,6 +409,69 @@ function ArticleManager() {
                 <button type="button" onClick={addTag} className="px-3 py-2 text-indigo-600 border border-indigo-200 rounded-lg text-sm hover:bg-indigo-50">+ Tag</button>
               </div>
             </div>
+
+            {/* Anexos — only show when editing an existing article */}
+            {editingArticle && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Anexos</label>
+
+                {/* Upload button + hidden input */}
+                <div className="flex gap-2 mb-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={e => editingArticle && handleFileUpload(editingArticle.id, e.target.files)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFiles}
+                    className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <span>📎</span>
+                    {uploadingFiles ? 'A carregar...' : 'Adicionar ficheiros'}
+                  </button>
+                  <span className="text-xs text-gray-400 self-center">Máx. 10MB • PDF, Imagens, Word, Excel, ZIP</span>
+                </div>
+
+                {/* Attachment list */}
+                {attachments.length > 0 && (
+                  <div className="space-y-2">
+                    {attachments.map(att => (
+                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-lg flex-shrink-0">
+                            {att.mime_type?.includes('pdf') ? '📕' :
+                             att.mime_type?.includes('image') ? '🖼️' :
+                             att.mime_type?.includes('word') ? '📘' :
+                             att.mime_type?.includes('excel') || att.mime_type?.includes('sheet') ? '📗' :
+                             att.mime_type?.includes('video') ? '🎬' :
+                             att.mime_type?.includes('zip') ? '🗜️' : '📎'}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm text-gray-700 truncate max-w-xs">{att.original_name}</p>
+                            <p className="text-xs text-gray-400">{att.file_size ? (att.file_size / 1024 / 1024 > 0.1 ? `${(att.file_size / 1024 / 1024).toFixed(1)} MB` : `${(att.file_size / 1024).toFixed(0)} KB`) : ''}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(att.id, editingArticle.id)}
+                          className="text-red-400 hover:text-red-600 text-xs flex-shrink-0 ml-2"
+                        >
+                          🗑️ Eliminar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {attachments.length === 0 && (
+                  <p className="text-xs text-gray-400 italic">Nenhum anexo. Clique em "Adicionar ficheiros" para carregar.</p>
+                )}
+              </div>
+            )}
 
             {formError && <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</div>}
             <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-white">
