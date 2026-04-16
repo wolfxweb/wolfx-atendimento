@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getMenuItems } from '../api/client';
@@ -49,10 +50,44 @@ export default function Sidebar() {
     queryFn: () => getMenuItems().then(r => r.data as MenuItem[]),
   });
 
-  // Flat list — all active items sorted by order, no category grouping
-  const allItems = [...menuItems]
-    .filter(m => m.is_active)
+  // Hierarchical menu — build tree from flat items
+  const activeItems = [...menuItems].filter(m => m.is_active);
+
+  // Items with no parent are top-level
+  const topLevelItems = activeItems
+    .filter(m => !m.parent_id)
     .sort((a, b) => a.order - b.order);
+
+  // Map children by parent_id
+  const childrenByParent: Record<string, MenuItem[]> = {};
+  for (const item of activeItems) {
+    if (item.parent_id) {
+      if (!childrenByParent[item.parent_id]) {
+        childrenByParent[item.parent_id] = [];
+      }
+      childrenByParent[item.parent_id].push(item);
+    }
+  }
+
+  // Track expanded AI section (default: expanded)
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    for (const item of topLevelItems) {
+      if (childrenByParent[item.id]?.length > 0) {
+        initial.add(item.id);
+      }
+    }
+    return initial;
+  });
+
+  const toggleParent = (id: string) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Exact match for root paths, prefix match for sub-paths.
   // /admin matches ONLY /admin (not /admin/tickets)
@@ -101,20 +136,20 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Menu — flat list */}
+        {/* Menu — hierarchical */}
         <nav className="flex-1 overflow-y-auto py-4">
           {isLoading ? (
             <div className={`text-gray-400 ${collapsed ? 'text-center px-2' : 'px-4 py-2'} text-sm`}>
               {collapsed ? '...' : 'Carregando...'}
             </div>
-          ) : allItems.length === 0 ? (
+          ) : topLevelItems.length === 0 ? (
             <div className={`text-gray-400 text-sm ${collapsed ? 'text-center px-2' : 'px-4'}`}>
               {collapsed ? '—' : 'Nenhum item no menu.'}
             </div>
           ) : collapsed ? (
             // Collapsed: icons only with tooltips
             <div className="space-y-0.5">
-              {allItems.map(item => (
+              {topLevelItems.map(item => (
                 <div key={item.id} className="relative group">
                   <Link
                     to={item.href}
@@ -133,22 +168,65 @@ export default function Sidebar() {
               ))}
             </div>
           ) : (
-            // Expanded: flat vertical list, no headers
+            // Expanded: hierarchical with collapsible sub-items
             <div className="space-y-0.5 px-2">
-              {allItems.map(item => (
-                <Link
-                  key={item.id}
-                  to={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                    isActive(item.href)
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                  }`}
-                >
-                  <MenuIcon name={item.icon || item.href.split('/').pop()} className="w-5 h-5 flex-shrink-0" />
-                  <span>{item.title}</span>
-                </Link>
-              ))}
+              {topLevelItems.map(item => {
+                const children = childrenByParent[item.id] || [];
+                const hasChildren = children.length > 0;
+                const isExpanded = expandedParents.has(item.id);
+                const itemIsActive = isActive(item.href);
+
+                return (
+                  <div key={item.id}>
+                    <div
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${
+                        itemIsActive
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      }`}
+                      onClick={() => hasChildren ? toggleParent(item.id) : undefined}
+                    >
+                      <MenuIcon name={item.icon || item.href.split('/').pop()} className="w-5 h-5 flex-shrink-0" />
+                      <Link to={item.href} className="flex-1">{item.title}</Link>
+                      {hasChildren && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); toggleParent(item.id); }}
+                          className="p-0.5 rounded hover:bg-indigo-500"
+                        >
+                          <svg
+                            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Sub-items */}
+                    {hasChildren && isExpanded && (
+                      <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
+                        {children
+                          .sort((a, b) => a.order - b.order)
+                          .map(child => (
+                            <Link
+                              key={child.id}
+                              to={child.href}
+                              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                                isActive(child.href)
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                              }`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-500 flex-shrink-0" />
+                              <span>{child.title}</span>
+                            </Link>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </nav>

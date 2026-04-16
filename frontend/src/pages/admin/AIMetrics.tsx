@@ -68,7 +68,7 @@ export default function AIMetrics() {
 
   // Intent pie chart
   const intentData = Object.entries(m.requests_by_intent || {}).map(([intent, count]) => ({
-    name: intent.replace(/_/g, ' ').replace(/\b\w/g => c => c.toUpperCase()),
+    name: intent.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
     value: count as number,
   }));
   const intentMax = Math.max(...intentData.map(d => d.value), 1);
@@ -198,7 +198,7 @@ export default function AIMetrics() {
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
                     labelStyle={{ fontWeight: 600 }}
-                    formatter={(v: number) => [`${v} ms`, 'Tempo Médio']}
+                    formatter={(v: any) => [`${v} ms`, 'Tempo Médio']}
                   />
                   <Line type="monotone" dataKey="avg_ms" stroke={COLORS.orange} strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
@@ -220,7 +220,7 @@ export default function AIMetrics() {
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
                     labelStyle={{ fontWeight: 600 }}
-                    formatter={(v: number) => [`${(v * 100).toFixed(1)}%`, 'Confiança']}
+                    formatter={(v: any) => [`${(Number(v) * 100).toFixed(1)}%`, 'Confiança']}
                   />
                   <Line type="monotone" dataKey="avg" stroke={COLORS.green} strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
