@@ -363,6 +363,8 @@ export const getGlobalSLAs = () => api.get('/sla/global');
 
 export const getSLADashboard = () => api.get('/sla/dashboard');
 
+export const getAtRiskTickets = () => api.get('/sla/tickets/at-risk');
+
 export const createSLA = (data: {
   name: string;
   priority: string;
