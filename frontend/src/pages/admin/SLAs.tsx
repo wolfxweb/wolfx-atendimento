@@ -172,7 +172,7 @@ export default function AdminSLAs() {
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              {f === 'all' ? 'Todos' : f === 'global' ? 'Globais' : 'Personalizados'}
+              {f === 'all' ? '⚡ Todos' : f === 'global' ? '🌐 Globais' : '🎯 Personalizados'}
             </button>
           ))}
         </div>

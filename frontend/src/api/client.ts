@@ -451,6 +451,9 @@ export const uploadKBAttachment = (articleId: string, file: File) => {
 
 export const deleteKBAttachment = (id: string) => api.delete(`/kb/attachments/${id}`);
 
+export const voteKBArticle = (id: string, vote: 'useful' | 'not_useful') =>
+  api.post(`/kb/articles/${id}/vote`, { vote });
+
 export const downloadKBAttachment = (id: string) =>
   `${import.meta.env.VITE_API_URL || ''}/api/v1/kb/attachments/${id}`;
 

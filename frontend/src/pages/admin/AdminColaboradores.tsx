@@ -87,7 +87,7 @@ export default function AdminColaboradores() {
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
-            {role === 'all' ? 'Todos' : role === 'admin' ? 'Admin' : 'Colaborador'}
+            {role === 'all' ? '👥 Todos' : role === 'admin' ? '🛡️ Admin' : '👤 Colaborador'}
           </button>
         ))}
         <div className="flex-1" />

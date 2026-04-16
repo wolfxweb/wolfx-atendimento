@@ -358,7 +358,7 @@ export default function AdminCategories() {
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
-            {type === 'all' ? 'Todas' : type === 'ticket' ? 'Tickets' : 'Produtos'}
+            {type === 'all' ? '🏷️ Todas' : type === 'ticket' ? '🎫 Tickets' : '📦 Produtos'}
           </button>
         ))}
         <div className="flex-1" />

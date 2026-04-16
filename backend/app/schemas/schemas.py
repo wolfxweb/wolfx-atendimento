@@ -843,6 +843,8 @@ class KBArticleListItem(BaseModel):
     category_name: Optional[str] = None
     tags: List[KBTagResponse] = []
     attachment_count: int = 0
+    useful_count: int = 0
+    not_useful_count: int = 0
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -863,6 +865,8 @@ class KBArticleDetail(BaseModel):
     category_name: Optional[str] = None
     tags: List[KBTagResponse] = []
     attachments: List[KBAttachmentResponse] = []
+    useful_count: int = 0
+    not_useful_count: int = 0
     created_at: datetime
     updated_at: Optional[datetime] = None
 

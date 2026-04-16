@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { getKBArticle, getRelatedArticles } from '../api/client';
+import { getKBArticle, getRelatedArticles, voteKBArticle } from '../api/client';
 import Layout from '../components/Layout';
 
 function formatDate(d: string) {
@@ -38,6 +39,20 @@ export default function KBArticleDetail() {
     queryFn: () => getRelatedArticles(id!).then(r => r.data),
     enabled: !!id,
   });
+
+  const [voted, setVoted] = useState<'useful' | 'not_useful' | null>(null);
+  const qc = useQueryClient();
+
+  async function handleVote(vote: 'useful' | 'not_useful') {
+    if (!article || voted) return;
+    try {
+      const r = await voteKBArticle(article.id, vote);
+      qc.setQueryData(['kb-article', id], (old: any) => old ? { ...old, useful_count: r.data.useful_count, not_useful_count: r.data.not_useful_count } : old);
+      setVoted(vote);
+    } catch (e) {
+      console.error('Vote failed:', e);
+    }
+  }
 
   async function handleDownload(attId: string, name: string) {
     const token = localStorage.getItem('token');
@@ -202,6 +217,45 @@ export default function KBArticleDetail() {
                 </div>
               </div>
             )}
+
+            {/* Article Rating */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Avaliação do Artigo</h4>
+              <p className="text-xs text-gray-500 mb-3">Este artigo foi útil para si?</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleVote('useful')}
+                  disabled={voted !== null}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                    voted === 'useful'
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : voted !== null
+                      ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
+                      : 'border-gray-200 text-gray-600 hover:border-green-300 hover:text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  👍 Útil
+                  <span className="text-xs opacity-70">({article?.useful_count || 0})</span>
+                </button>
+                <button
+                  onClick={() => handleVote('not_useful')}
+                  disabled={voted !== null}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                    voted === 'not_useful'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : voted !== null
+                      ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
+                      : 'border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600 hover:bg-red-50'
+                  }`}
+                >
+                  👎 Não útil
+                  <span className="text-xs opacity-70">({article?.not_useful_count || 0})</span>
+                </button>
+              </div>
+              {voted && (
+                <p className="text-xs text-green-600 mt-2 text-center">✅ Obrigado pela sua opinião!</p>
+              )}
+            </div>
 
             {/* Help CTA */}
             <div className="bg-indigo-50 rounded-xl border border-indigo-100 p-5">

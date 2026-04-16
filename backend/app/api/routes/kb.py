@@ -1,7 +1,7 @@
 import os
 import uuid as uuid_lib
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
@@ -484,6 +484,30 @@ async def suggest_articles(
         )
     ).limit(limit).all()
     return [_article_to_list_item(a) for a in articles]
+
+
+# ═══════════════════════════════════════════
+# AVALIAÇÃO
+# ═══════════════════════════════════════════
+
+@router.post("/kb/articles/{article_id}/vote")
+async def vote_article(
+    article_id,
+    vote: str = Body(..., embed=True),  # "useful" or "not_useful"
+    db: Session = Depends(get_db),
+):
+    if vote not in ("useful", "not_useful"):
+        raise HTTPException(status_code=400, detail="Vote must be 'useful' or 'not_useful'")
+    article = db.query(KBArticle).filter(KBArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Artigo não encontrado")
+    if vote == "useful":
+        article.useful_count = (article.useful_count or 0) + 1
+    else:
+        article.not_useful_count = (article.not_useful_count or 0) + 1
+    db.commit()
+    db.refresh(article)
+    return {"useful_count": article.useful_count, "not_useful_count": article.not_useful_count}
 
 
 # ═══════════════════════════════════════════

@@ -492,6 +492,8 @@ class KBArticle(Base):
     status = Column(String(20), default="draft")  # draft | published
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     views = Column(Integer, default=0)
+    useful_count = Column(Integer, default=0)
+    not_useful_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
