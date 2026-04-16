@@ -93,8 +93,13 @@ export default function AdminDashboard() {
     acc[t.status] = (acc[t.status] || 0) + 1;
     return acc;
   }, {});
+  const STATUS_LABELS: Record<string, string> = {
+    open: 'Abertos', in_progress: 'Em Progresso', pending: 'Pendente',
+    awaiting_customer: 'Aguard. Cliente', solved: 'Resolvidos', closed: 'Fechados',
+    cancelled: 'Cancelados',
+  };
   const statusChart = Object.entries(statusCounts).map(([status, count]) => ({
-    name: status.replace(/_/g, ' '), value: count as number,
+    name: STATUS_LABELS[status] || status.replace(/_/g, ' '), value: count as number,
   }));
   const STATUS_COLORS = ['#3b82f6', '#f97316', '#8b5cf6', '#22c55e', '#ef4444', '#6b7280', '#ec4899'];
 
@@ -253,7 +258,7 @@ export default function AdminDashboard() {
                     }`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 truncate">{t.title}</p>
-                      <p className="text-xs text-gray-400 capitalize">{t.priority} · {t.status?.replace(/_/g, ' ')}</p>
+                      <p className="text-xs text-gray-400 capitalize">{t.priority} · {STATUS_LABELS[t.status] || t.status?.replace(/_/g, ' ')}</p>
                     </div>
                     <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
