@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import Layout from '../../components/Layout';
-import { createTicket, getCustomers, getCategories, getProducts, createCategory, createProduct, createCustomer, extractErrorMessage } from '../../api/client';
+import { createTicket, getCustomers, getCategories, getProducts, createCategory, createProduct, createCustomer, suggestKBArticles, extractErrorMessage } from '../../api/client';
+import { Link } from 'react-router-dom';
 
 // ── Quick-create dialogs ──
 function QuickAddCustomer({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string, name: string) => void }) {
@@ -165,6 +166,22 @@ export default function NewTicketPage() {
   const [priority, setPriority] = useState('normal');
   const [customerId, setCustomerId] = useState('');
   const [error, setError] = useState('');
+  const [kbSuggestions, setKbSuggestions] = useState<any[]>([]);
+  const [showKBSuggestions, setShowKBSuggestions] = useState(false);
+
+  // Debounced KB article suggestion
+  useEffect(() => {
+    const text = `${title} ${description}`.trim();
+    if (text.length < 10) { setKbSuggestions([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const r = await suggestKBArticles(text, 4);
+        setKbSuggestions(r.data || []);
+        setShowKBSuggestions(true);
+      } catch { setKbSuggestions([]); }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [title, description]);
 
   // Quick-add dialogs
   const [showCustomerDialog, setShowCustomerDialog] = useState(false);
@@ -301,6 +318,34 @@ export default function NewTicketPage() {
                     <label className={labelClass}>Descrição *</label>
                     <textarea value={description} onChange={e => setDescription(e.target.value)} className={inputClass} rows={4} placeholder="Descreva o problema em detalhes (mín. 10 caracteres)" />
                   </div>
+
+                  {/* KB Article Suggestions */}
+                  {showKBSuggestions && kbSuggestions.length > 0 && (
+                    <div className="mt-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-indigo-500 text-sm">💡</span>
+                        <p className="text-sm font-medium text-indigo-700">Artigos que podem ajudar</p>
+                        <button onClick={() => setShowKBSuggestions(false)} className="ml-auto text-indigo-400 hover:text-indigo-600 text-xs">Dismiss</button>
+                      </div>
+                      <div className="space-y-2">
+                        {kbSuggestions.map((a: any) => (
+                          <div key={a.id} className="flex items-start gap-3 bg-white rounded-lg p-3 hover:bg-indigo-50 transition-colors">
+                            <span className="mt-0.5 text-indigo-400 flex-shrink-0">📄</span>
+                            <div className="flex-1 min-w-0">
+                              <Link to={`/kb/${a.id}`} target="_blank" className="text-sm font-medium text-indigo-700 hover:text-indigo-900 block truncate">{a.title}</Link>
+                              {a.summary && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{a.summary}</p>}
+                            </div>
+                            <Link to={`/kb/${a.id}`} target="_blank" className="text-indigo-500 hover:text-indigo-700 flex-shrink-0 text-xs border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-100">Ver</Link>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {showKBSuggestions && kbSuggestions.length === 0 && title.length >= 10 && (
+                    <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+                      <span>🔍</span> A verificar artigos relacionados...
+                    </div>
+                  )}
                 </div>
               </div>
 
