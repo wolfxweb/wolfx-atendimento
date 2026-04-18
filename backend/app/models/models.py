@@ -501,6 +501,8 @@ class KBArticle(Base):
     views = Column(Integer, default=0)
     useful_count = Column(Integer, default=0)
     not_useful_count = Column(Integer, default=0)
+    embedding_status = Column(String(20), nullable=True)  # null | pending | indexed | failed
+    chunk_count = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

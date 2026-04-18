@@ -250,6 +250,11 @@ def index_article(db: Session, article_id: str) -> dict:
             vectors = model.embed_documents(texts_to_embed)
         except Exception as e:
             logger.error(f"[RAG] Batch embedding failed for article {article_id}: {e}")
+            try:
+                article.embedding_status = "failed"
+                db.commit()
+            except Exception:
+                pass
             raise
 
         for i, (source_type, source_id, chunk_idx, content, metadata) in enumerate(chunks):
@@ -265,6 +270,9 @@ def index_article(db: Session, article_id: str) -> dict:
             db.add(emb)
             stored += 1
 
+    db.commit()
+    article.embedding_status = "indexed"
+    article.chunk_count = stored
     db.commit()
     logger.info(f"[RAG] Indexed article {article_id}: {stored} chunks stored")
     return {"article_id": article_id, "chunks_stored": stored, "errors": errors}
