@@ -15,7 +15,7 @@ from app.schemas.ai_schemas import (
 from app.api.routes.auth import get_current_user
 from app.models.models import User
 
-router = APIRouter(prefix="/api/v1/ai/rules", tags=["AI Rules"])
+router = APIRouter(prefix="/ai/rules", tags=["AI Rules"])
 
 
 @router.get("", response_model=list[AIApprovalRuleResponse])

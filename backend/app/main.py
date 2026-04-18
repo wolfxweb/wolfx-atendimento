@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
@@ -158,14 +159,15 @@ def seed_sla_default(db: Session):
 
 
 def seed_menu(db: Session):
-    """Cria menu items padrão (idempotente)"""
+    """Cria menu items padrão com hierarquia (idempotente)"""
     from app.models.models import MenuItem
 
     # Delete existing and re-seed to keep in sync with current seed definition
     db.query(MenuItem).delete()
     db.commit()
 
-    menu_items = [
+    # First pass: create parent items
+    parent_items = [
         {"category": "Menu", "title": "Dashboard", "href": "/admin", "icon": "dashboard", "order": 1},
         {"category": "Menu", "title": "Tickets", "href": "/admin/tickets", "icon": "tickets", "order": 2},
         {"category": "Menu", "title": "SLAs", "href": "/admin/slas", "icon": "sla", "order": 3},
@@ -175,11 +177,81 @@ def seed_menu(db: Session):
         {"category": "Menu", "title": "Categorias", "href": "/admin/categories", "icon": "default", "order": 7},
         {"category": "Menu", "title": "Base de Conhecimento", "href": "/admin/kb", "icon": "kb", "order": 8},
         {"category": "Menu", "title": "KB Cliente", "href": "/kb", "icon": "kb", "order": 9, "is_active": True},
+        {"category": "AI", "title": "Inteligência Artificial", "href": "/admin/ai", "icon": "ai", "order": 10},
     ]
-    for item_data in menu_items:
+    for item_data in parent_items:
         db.add(MenuItem(**item_data))
+    db.flush()  # Assign UUIDs to parent items
+
+    # Get AI parent by title after flush
+    ai_parent = db.query(MenuItem).filter(
+        MenuItem.title == "Inteligência Artificial",
+        MenuItem.category == "AI"
+    ).first()
+    ai_parent_id = ai_parent.id
+
+    # Second pass: create AI sub-items with proper parent_id
+    ai_children = [
+        {"title": "Aprovações", "href": "/admin/ai/aprovacoes", "icon": "approval", "order": 11},
+        {"title": "Atividades de IA", "href": "/admin/ai/atividades", "icon": "activity", "order": 12},
+        {"title": "Métricas IA", "href": "/admin/ai/metricas", "icon": "metrics", "order": 13},
+        {"title": "Regras IA", "href": "/admin/ai/regras", "icon": "rules", "order": 14},
+        {"title": "RAG - Base de Conhecimento", "href": "/admin/ai/kb-rag", "icon": "rag", "order": 15},
+    ]
+    for item_data in ai_children:
+        item_data["category"] = "AI"
+        item_data["parent_id"] = ai_parent_id
+        db.add(MenuItem(**item_data))
+
     db.commit()
     print("Menu items seeded")
+
+
+# =====================
+# RAG SCHEDULER
+# =====================
+_scheduler = None
+_scheduler_thread = None
+
+def _process_pending_rag_documents():
+    """Job that runs every 5 minutes to index pending RAG documents."""
+    import asyncio
+    from app.database import SessionLocal
+    from app.models.models import AIRagDocument
+    from app.services.embedding_service import index_rag_document
+
+    db = SessionLocal()
+    try:
+        pending_docs = db.query(AIRagDocument).filter(
+            AIRagDocument.status.in_(["pending", "processing"])
+        ).all()
+        if not pending_docs:
+            return
+        print(f"[RAG Scheduler] Processing {len(pending_docs)} pending document(s)")
+        for doc in pending_docs:
+            try:
+                # Run async index in sync context
+                asyncio.run(index_rag_document(db, doc.id))
+                print(f"[RAG Scheduler] Indexed: {doc.title}")
+            except Exception as e:
+                print(f"[RAG Scheduler] Error indexing {doc.title}: {e}")
+    finally:
+        db.close()
+
+def _start_scheduler():
+    from apscheduler.schedulers.background import BackgroundScheduler
+    global _scheduler
+    _scheduler = BackgroundScheduler()
+    _scheduler.add_job(_process_pending_rag_documents, "interval", minutes=5)
+    _scheduler.start()
+    print("[RAG Scheduler] Started — running every 5 minutes")
+
+def _stop_scheduler():
+    global _scheduler
+    if _scheduler:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
+        print("[RAG Scheduler] Stopped")
 
 
 # =====================
@@ -189,7 +261,7 @@ def seed_menu(db: Session):
 async def lifespan(app: FastAPI):
     # Startup
     Base.metadata.create_all(bind=engine)
-    
+
     # Seed data
     db = SessionLocal()
     try:
@@ -199,9 +271,13 @@ async def lifespan(app: FastAPI):
         seed_menu(db)
     finally:
         db.close()
-    
+
+    # Start RAG background scheduler
+    _start_scheduler()
+
     yield
     # Shutdown
+    _stop_scheduler()
 
 
 # =====================
@@ -233,6 +309,7 @@ from app.api.routes.ticket_collaborators import router as ticket_collaborators_r
 from app.api.routes.ticket_products import router as ticket_products_router
 from app.api.routes.ticket_relations import router as ticket_relations_router
 from app.api.routes import ai_approvals, ai_executions, ai_metrics, ai_rules, ai_feedback, ai_suggestions
+from app.api.routes.ai_kb_rag import router as ai_kb_rag_router
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
@@ -259,6 +336,7 @@ app.include_router(ai_metrics.router, prefix=settings.API_V1_PREFIX, tags=["AI M
 app.include_router(ai_rules.router, prefix=settings.API_V1_PREFIX, tags=["AI Rules"])
 app.include_router(ai_feedback.router, prefix=settings.API_V1_PREFIX, tags=["AI Feedback"])
 app.include_router(ai_suggestions.router, prefix=settings.API_V1_PREFIX, tags=["AI Suggestions"])
+app.include_router(ai_kb_rag_router, prefix=settings.API_V1_PREFIX, tags=["AI KB RAG"])
 
 
 @app.get("/")

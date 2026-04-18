@@ -9,11 +9,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres_postgres.1.nna9eggrh1nvmhflrrbkxicu6:5432/atendimento_db
+      - DATABASE_URL=postgresql://postgres:97452c28f62db6d77be083917b698660@postgres_postgres:5432/atendimento_db
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=false
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - MINIMAX_API_BASE=https://api.minimax.chat/v1
+      - KB_UPLOAD_DIR=/app/uploads
     volumes:
       - uploads_data:/app/uploads
     networks:

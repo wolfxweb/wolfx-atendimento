@@ -1,0 +1,64 @@
+# ============================================================
+# Docker Swarm Stack — wolfx-atendimento
+# Deploy with:  docker stack deploy -c stack.yml atendimento
+# ============================================================
+# ⚠️  Crie o ficheiro backend/.env antes de fazer deploy
+# ============================================================
+
+version: "3.8"
+
+services:
+  atendimento-api:
+    image: localhost:5050/wolfx-atendimento-api:latest
+    env_file:
+      - ./backend/.env
+    networks:
+      - server
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1024M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      labels:
+        - traefik.enable=true
+        - traefik.constraint-label=server
+        - traefik.http.routers.atendimento.entrypoints=websecure
+        - traefik.http.routers.atendimento.rule=Host(`atendimento.wolfx.com.br`) && PathPrefix(`/api`)
+        - traefik.http.routers.atendimento.tls=true
+        - traefik.http.services.atendimento.loadbalancer.server.port=8000
+    volumes:
+      - atendimento_uploads:/app/uploads
+
+  atendimento-frontend:
+    image: localhost:5050/wolfx-atendimento-frontend:latest
+    networks:
+      - server
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      labels:
+        - traefik.enable=true
+        - traefik.constraint-label=server
+        - traefik.http.routers.atendimento-app.entrypoints=websecure
+        - traefik.http.routers.atendimento-app.rule=Host(`atendimento.wolfx.com.br`)
+        - traefik.http.routers.atendimento-app.tls=true
+        - traefik.http.services.atendimento-app.loadbalancer.server.port=80
+
+networks:
+  server:
+    external: true
+
+volumes:
+  atendimento_uploads:
+    driver: local

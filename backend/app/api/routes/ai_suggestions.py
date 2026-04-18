@@ -14,7 +14,7 @@ from app.api.routes.auth import get_current_user
 from app.models.models import User
 from sqlalchemy import desc
 
-router = APIRouter(prefix="/api/v1/ai/suggestions", tags=["AI Suggestions"])
+router = APIRouter(prefix="/ai/suggestions", tags=["AI Suggestions"])
 
 
 @router.get("/ticket/{ticket_id}", response_model=list[AITicketSuggestionResponse])

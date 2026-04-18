@@ -12,7 +12,7 @@ from app.models.ai_models import AIWorkflowExecution, AIAuditLog
 from app.schemas.ai_schemas import AIExecutionResponse, AIAuditLogResponse
 from sqlalchemy import desc
 
-router = APIRouter(prefix="/api/v1/ai/executions", tags=["AI Executions"])
+router = APIRouter(prefix="/ai/executions", tags=["AI Executions"])
 
 
 @router.get("", response_model=list[AIExecutionResponse])

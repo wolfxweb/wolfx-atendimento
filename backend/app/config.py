@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:postgres@localhost:5432/atendimento_db"
+        "postgresql://postgres:***@localhost:5432/atendimento_db"
     )
 
     # JWT
@@ -27,9 +27,22 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "/app/uploads"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
 
+    # Telegram
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+
+    # AI / Embeddings
+    MINIMAX_API_KEY: str = ""
+    MINIMAX_BASE_URL: str = "https://api.minimax.io/v1"
+    AI_DRY_RUN: bool = True
+
+    # File uploads size (bytes)
+    MAX_UPLOAD_SIZE_MB: int = 10
+
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # allow additional env vars not defined here
 
 
 @lru_cache()

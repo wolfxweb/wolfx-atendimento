@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime, ForeignKey,
-    Numeric, Integer, JSON, Enum as SAEnum, Date, UniqueConstraint, Table
+    Numeric, Integer, JSON, Enum as SAEnum, Date, UniqueConstraint, Table, Index
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
@@ -541,3 +541,68 @@ class KBAttachment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     article = relationship("KBArticle", back_populates="attachments")
+
+
+class AIEmbedding(Base):
+    """Stored embedding chunks for RAG semantic search."""
+    __tablename__ = "ai_embeddings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    article_id = Column(UUID(as_uuid=True), ForeignKey("kb_articles.id", ondelete="CASCADE"), nullable=False)
+    source_type = Column(String(30), nullable=False)  # 'article_body' | 'article_attachment' | 'ticket_history'
+    source_id = Column(UUID(as_uuid=True), nullable=True)  # attachment_id for PDFs
+    chunk_index = Column(Integer, nullable=False)
+    content_chunk = Column(Text, nullable=False)
+    embedding = Column(JSON, nullable=True)  # List[float] stored as JSON (dim=1024)
+    chunk_metadata = Column(JSON, nullable=True)  # {page, filename, char_count}
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    article = relationship("KBArticle", backref=backref("embeddings", cascade="all, delete-orphan"))
+
+    __table_args__ = (
+        Index("idx_emb_article", "article_id"),
+        Index("idx_emb_source", "article_id", "source_type"),
+    )
+
+
+class AIRagDocument(Base):
+    """RAG document — either an uploaded PDF or a KB article indexed for semantic search."""
+    __tablename__ = "ai_rag_documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    article_id = Column(UUID(as_uuid=True), ForeignKey("kb_articles.id", ondelete="CASCADE"), nullable=True)  # null = standalone PDF
+    title = Column(String(500), nullable=False)
+    file_path = Column(String(500), nullable=True)  # null for KB articles (no PDF file)
+    original_filename = Column(String(500), nullable=False)
+    mime_type = Column(String(100), nullable=False, default="application/pdf")
+    file_size = Column(Integer, nullable=True)
+    status = Column(String(30), nullable=False, default="pending")  # pending | processing | indexed | failed
+    chunk_count = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    embedded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    chunks = relationship("AIRagChunk", back_populates="rag_document", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_rag_doc_status", "status"),
+    )
+
+
+class AIRagChunk(Base):
+    """Embedding chunks for standalone AIRagDocument PDFs."""
+    __tablename__ = "ai_rag_chunks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rag_document_id = Column(UUID(as_uuid=True), ForeignKey("ai_rag_documents.id", ondelete="CASCADE"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    content_chunk = Column(Text, nullable=False)
+    embedding = Column(JSON, nullable=True)  # List[float] dim=1024
+    chunk_metadata = Column(JSON, nullable=True)  # {page, char_count}
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    rag_document = relationship("AIRagDocument", back_populates="chunks")
+
+    __table_args__ = (
+        Index("idx_rag_chunk_doc", "rag_document_id"),
+    )

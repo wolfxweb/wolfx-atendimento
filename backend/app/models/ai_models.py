@@ -73,7 +73,7 @@ class AIApproval(Base):
     ticket    = relationship("Ticket", back_populates="ai_approvals")
     approver  = relationship("User")
     feedback  = relationship("AIApprovalFeedback", back_populates="approval", uselist=False)
-    matched_rule = relationship("AIApprovalRule")
+    matched_rule = relationship("AIApprovalRule", foreign_keys=[matched_rule_id])
 
 
 class AIAuditLog(Base):

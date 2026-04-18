@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models.ai_models import AIApproval, AIWorkflowExecution, AIApprovalMetrics
 from app.schemas.ai_schemas import AIStatsResponse, AIApprovalMetricsResponse
 
-router = APIRouter(prefix="/api/v1/ai", tags=["AI Metrics"])
+router = APIRouter(prefix="/ai", tags=["AI Metrics"])
 
 
 @router.get("/stats", response_model=AIStatsResponse)

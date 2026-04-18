@@ -592,3 +592,133 @@ async def download_attachment(
         media_type=att.mime_type,
         filename=att.original_name,
     )
+
+
+# ═══════════════════════════════════════════
+# RAG — EMBEDDINGS & SEMANTIC SEARCH
+# ═══════════════════════════════════════════
+# Note: these are mounted under /api/v1/kb/* because they are KB-centric.
+# The AI module plan references /ai/rag/* — we expose both for flexibility.
+
+import threading
+from app.services.embedding_service import (
+    index_article,
+    delete_article_embeddings,
+    search_similar_chunks,
+    get_embeddings,
+)
+
+
+def _async_index(db_url: str, article_id: str):
+    """Background thread: index article without blocking the HTTP response."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    engine = create_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        index_article(session, article_id)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"[RAG] Background index failed for {article_id}: {e}")
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@router.post("/kb/articles/{article_id}/index", status_code=202)
+async def index_article_endpoint(
+    article_id,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Trigger re-indexing of a KB article for RAG.
+    Runs in background — returns immediately.
+    """
+    article = db.query(KBArticle).filter(KBArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Artigo não encontrado")
+
+    db_url = str(db.get_bind().url)
+    thread = threading.Thread(target=_async_index, args=(db_url, str(article_id)))
+    thread.start()
+
+    return {"message": f"Indexação iniciada para artigo {article_id}", "article_id": str(article_id)}
+
+
+@router.post("/kb/articles/index-all", status_code=202)
+async def index_all_articles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Re-index all KB articles in background.
+    """
+    articles = db.query(KBArticle).all()
+    db_url = str(db.get_bind().url)
+    count = 0
+    for article in articles:
+        thread = threading.Thread(target=_async_index, args=(db_url, str(article.id)))
+        thread.start()
+        count += 1
+    return {"message": f"Indexação iniciada para {count} artigos", "count": count}
+
+
+@router.delete("/kb/articles/{article_id}/index")
+async def delete_article_index(
+    article_id,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete all RAG embeddings for a KB article."""
+    article = db.query(KBArticle).filter(KBArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Artigo não encontrado")
+    count = delete_article_embeddings(db, article_id)
+    return {"message": f"{count} chunks removidos do índice", "deleted": count}
+
+
+@router.post("/kb/rag/search")
+async def rag_search(
+    query: str = Body(..., embed=True),
+    article_ids: Optional[List[str]] = Body(None, embed=True),
+    top_k: int = Body(5, embed=True),
+    min_similarity: float = Body(0.3, embed=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Semantic RAG search across KB article embeddings.
+
+    Body (JSON):
+      query: string (required) — search query
+      article_ids: list of UUID strings (optional) — filter to specific articles
+      top_k: int (default 5) — number of results
+      min_similarity: float (default 0.3) — minimum cosine similarity threshold
+    """
+    try:
+        get_embeddings()  # validates API key is set
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
+
+    results = search_similar_chunks(
+        db=db,
+        query=query,
+        article_ids=article_ids,
+        top_k=top_k,
+        min_similarity=min_similarity,
+    )
+    return {"query": query, "results": results, "count": len(results)}
+
+
+@router.get("/kb/articles/{article_id}/embeddings/count")
+async def get_article_embedding_count(
+    article_id,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the number of stored embedding chunks for an article."""
+    from app.models.models import AIEmbedding
+    count = db.query(AIEmbedding).filter(AIEmbedding.article_id == article_id).count()
+    return {"article_id": str(article_id), "chunks": count}

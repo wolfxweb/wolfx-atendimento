@@ -473,6 +473,33 @@ export const indexAllKBArticles = () =>
 export const deleteKBRagIndex = (articleId: string) =>
   api.delete(`/ai/kb-rag/${articleId}`);
 
+// Standalone RAG document upload (no article required)
+export const uploadRagDocument = (title: string, file: File) => {
+  const formData = new FormData();
+  formData.append('title', title);
+  formData.append('file', file);
+  // NOTE: do NOT set Content-Type manually — axios must set it with the boundary
+  return api.post(`/ai/kb-rag/upload-pdf`, formData);
+};
+
+// Legacy: PDF attached to KB article
+export const uploadPdfRag = (articleId: string, file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/ai/kb-rag/upload-pdf-article/${articleId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const getRagDocuments = () =>
+  api.get('/ai/kb-rag/documents');
+
+export const deleteRagDocument = (ragDocumentId: string) =>
+  api.delete(`/ai/kb-rag/documents/${ragDocumentId}`);
+
+export const reindexRagDocument = (ragDocumentId: string) =>
+  api.post(`/ai/kb-rag/documents/${ragDocumentId}/reindex`);
+
 // Users / Colaboradores (admin HR management)
 export const getUsers = (params?: { role?: string; is_active?: boolean }) =>
   api.get('/users', { params });

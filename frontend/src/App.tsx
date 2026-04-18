@@ -154,7 +154,7 @@ function AppRoutes() {
       <Route path="/admin/ai/aprovacoes" element={
         <ProtectedRoute roles={['admin']}><AIApprovals /></ProtectedRoute>
       } />
-      <Route path="/admin/ai/actividade" element={
+      <Route path="/admin/ai/atividades" element={
         <ProtectedRoute roles={['admin']}><AIActivity /></ProtectedRoute>
       } />
       <Route path="/admin/ai/metricas" element={
