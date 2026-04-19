@@ -1279,3 +1279,321 @@ TELEGRAM_CHAT_ID=1229273513
 - [ ] Criar tabelas de checkpoint LangGraph na DB (`checkpoints`, `checkpoint_writes`)
 - [ ] Variáveis de ambiente `WORKFLOW_ENABLED=true`, `LANGFUSE_*` no serviço de produção
 - [ ] Verificar se `ai_embeddings` / pipeline RAG PDF está activo na produção
+
+---
+
+## 13. Plano de Ajuste — LangChain + LangGraph + LangFuse (Revisão)
+
+> **Problema:** A implementação actual NÃO usa LangChain. As chains são funções Python
+> custom que chamam `httpx` directamente. O LangFuse é chamado manualmente.
+> Este plano corrige para usar o ecossistema LangChain correctamente.
+
+### 13.1 Arquitectura Actual (Problemas)
+
+```
+[PROBLEMA] llm_service.py         → httpx custom (sem LangChain)
+[PROBLEMA] langfuse_client.py     → lf.generation() manual (sem callback LangChain)
+[PROBLEMA] chains/*.py            → funções Python com string prompts (sem LCEL)
+[OK]       workflows/*.py           → LangGraph puro ✅
+[OK]       scheduler/*.py          → APScheduler ✅
+```
+
+### 13.2 Arquitectura Pretendida
+
+```
+[OK]       LangGraph  → orchestration (já correcto, não muda)
+[NOVO]     LangChain  → LLM wrapper + LCEL chains
+[NOVO]     LangFuse   → callback handler automático (LangChain-native)
+```
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LangGraph Node (Python)                                        │
+│    │                                                            │
+│    ▼                                                            │
+│  LCEL Chain (PromptTemplate | ChatOpenAI | JsonOutputParser)   │
+│    │                                                            │
+│    ▼                                                            │
+│  ChatOpenAI (openrouter base_url)                              │
+│    │  ↕                                                          │
+│    │  LangFuse CallbackHandler (tracing automático)             │
+│    │                                                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 13.3 Pacotes Necessários (requirements.txt)
+
+```txt
+# Adicionar:
+langchain-openai>=0.2.0      # ChatOpenAI com OpenAI+OpenRouter compatibilidade
+langchain-core>=0.3.0        # LCEL base (PromptTemplate, StrOutputParser, etc.)
+langfuse>=2.8.0              # callback handler (já existe)
+
+# Manter:
+langgraph==0.2.60            # Workflow engine (não muda)
+langgraph-checkpoint-postgres==2.0.0
+APScheduler==3.10.4
+httpx==0.25.2                # para embedding service (não muda)
+pdfplumber==0.11.0
+```
+
+### 13.4 Ficheiros a Alterar
+
+| Ficheiro | Mudança | Prioridade |
+|---|---|---|
+| `requirements.txt` | Adicionar `langchain-openai`, `langchain-core` | 🔴 Alta |
+| `app/services/llm_service.py` | Substituir `httpx` por `ChatOpenAI` LangChain | 🔴 Alta |
+| `app/services/langfuse_client.py` | Substituir `lf.generation()` por `CallbackHandler` | 🔴 Alta |
+| `app/ai/chains/classification.py` | LCEL: `PromptTemplate \| ChatOpenAI \| JsonOutputParser` | 🔴 Alta |
+| `app/ai/chains/suggestion.py` | LCEL: `PromptTemplate \| ChatOpenAI \| JsonOutputParser` | 🔴 Alta |
+| `app/ai/chains/escalation.py` | LCEL: `PromptTemplate \| ChatOpenAI \| JsonOutputParser` | 🟡 Média |
+| `app/ai/chains/rag.py` | LCEL: `PromptTemplate \| ChatOpenAI \| StrOutputParser` | 🟡 Média |
+| `app/ai/workflows/nodes/classify.py` | Usar chain LCEL em vez de `llm.complete()` | 🔴 Alta |
+| `app/ai/workflows/nodes/suggest_response.py` | Usar chain LCEL em vez de `llm.complete()` | 🔴 Alta |
+| `app/ai/workflows/nodes/escalate.py` | Usar chain LCEL em vez de `llm.complete()` | 🟡 Média |
+| `app/services/embedding_service.py` | Substituir `httpx` por LangChain embeddings | 🟡 Média |
+| `app/ai/persistence/checkpointer.py` | Usar `langgraph.checkpoint.postgres` (já correcto) | 🟢 Baixa |
+
+### 13.5 Detalhe das Alterações por Ficheiro
+
+---
+
+#### 13.5.1 `requirements.txt` — Adicionar LangChain
+
+```diff
++ langchain-openai>=0.2.0
++ langchain-core>=0.3.0
+```
+
+---
+
+#### 13.5.2 `app/services/llm_service.py` — Substituir httpx por ChatOpenAI
+
+**Antes (problema):**
+```python
+import httpx
+resp = self._client().post(url, headers=headers, json=payload)
+```
+
+**Depois (LangChain):**
+```python
+from langchain_openai import ChatOpenAI
+
+class LLMService:
+    def __init__(self, ...):
+        self._llm = ChatOpenAI(
+            model=self.model,
+            api_key=self.api_key,
+            base_url=f"{self.api_base}/v1",  # OpenRouter
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    def chat_complete(self, messages, ...):
+        # LangChain usa messages como list of BaseMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
+        lc_messages = [SystemMessage(content=m["content"]) if m["role"]=="system"
+                      else HumanMessage(content=m["content"]) for m in messages]
+        response = self._llm.invoke(lc_messages)
+        return {"content": response.content, "usage": {}, "model": self.model}
+```
+
+**Manter compatibilidade:** O `LLMService` continua a existir como wrapper/fachada.
+Os nodes continuam a chamar `llm.complete()` ou `llm.chat_complete()`.
+Só a implementação interna muda de `httpx` para `ChatOpenAI`.
+
+---
+
+#### 13.5.3 `app/services/langfuse_client.py` — Callback LangChain
+
+**Antes (problema):**
+```python
+# Tracing manual — não aparece no LangFuse como chain
+trace_llm_call(operation="classify", model=llm.model, ...)
+lf.generation(name=operation, model=model, input=input_text, ...)
+```
+
+**Depois (LangChain callback):**
+```python
+from langfuse.callback import CallbackHandler
+
+# Criar handler uma vez (singleton)
+def get_langfuse_callback():
+    global _callback
+    if _callback is None:
+        _callback = CallbackHandler(
+            host=os.getenv("LANGFUSE_HOST"),
+            secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+            public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+        )
+    return _callback
+
+# Nos nodes, usar como callback na chain:
+chain.invoke(
+    {"title": title, "description": desc},
+    config={"callbacks": [get_langfuse_callback()]}
+)
+```
+
+**Resultado:** Cada `.invoke()` da chain LangChain é automaticamente
+traceada no LangFuse com input, output, latency, tokens, model — sem código manual.
+
+---
+
+#### 13.5.4 `app/ai/chains/classification.py` — LCEL Chain
+
+**Antes (problema):**
+```python
+def get_classification_prompt(title, description, history) -> str:
+    # retorna string de prompt
+    return f"Classifica o ticket...\nTítulo: {title}\n..."
+
+response = llm.complete(prompt=prompt, system_prompt=system_prompt, ...)
+parsed = extract_json(response)
+```
+
+**Depois (LCEL):**
+```python
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel
+
+class ClassificationOutput(BaseModel):
+    priority: str
+    category: str
+    intent: str
+    language: str
+    summary: str
+    confidence: float
+    reason: str
+
+# Definir chain LCEL
+classification_chain = (
+    PromptTemplate.from_template(
+        "Classifica o ticket.\n\nTítulo: {title}\nDescrição: {description}\n"
+        "Histórico: {history}\n\nResponde com JSON."
+    )
+    | ChatOpenAI(model=MODEL, temperature=0.2, max_tokens=512)
+    | JsonOutputParser(pydantic_object=ClassificationOutput)
+)
+
+# Invocar
+result = classification_chain.invoke(
+    {"title": title, "description": description, "history": history},
+    config={"callbacks": [get_langfuse_callback()]}
+)
+# result é já um dict com priority, category, intent, etc. — sem parse manual
+```
+
+---
+
+#### 13.5.5 `app/ai/workflows/nodes/classify.py` — Usar LCEL
+
+**Antes:**
+```python
+llm = get_llm_service(db)
+response = llm.complete(prompt=prompt, system_prompt=system_prompt, ...)
+parsed = extract_json(response)
+trace_llm_call(operation="classify", ...)
+```
+
+**Depois:**
+```python
+from app.ai.chains.classification import classification_chain
+from app.services.langfuse_client import get_langfuse_callback
+
+result = classification_chain.invoke(
+    {"title": title, "description": description, "history": history},
+    config={"callbacks": [get_langfuse_callback()]}
+)
+# result já tem priority, category, intent, confidence, etc.
+# LangFuse já traceou automaticamente
+```
+
+---
+
+### 13.6 Ordem de Implementação
+
+```
+Passo 1 ──► requirements.txt
+  │          + langchain-openai, langchain-core
+  │
+Passo 2 ──► llm_service.py
+  │          Substituir httpx por ChatOpenAI (manter interface)
+  │
+Passo 3 ──► langfuse_client.py
+  │          CallbackHandler em vez de lf.generation()
+  │
+Passo 4 ──► classification.py + classify_node
+  │          LCEL chain + callback no invoke()
+  │
+Passo 5 ──► suggestion.py + suggest_response_node
+  │          LCEL chain + callback no invoke()
+  │
+Passo 6 ──► escalation.py + escalate_node
+  │          LCEL chain + callback no invoke()
+  │
+Passo 7 ──► embedding_service.py
+  │          LangChain embeddings em vez de httpx
+  │
+Passo 8 ──► Build + deploy + testar
+```
+
+### 13.7 Notas Importantes
+
+1. **LangGraph NÃO muda** — os nodes continuam a ser funções Python.
+   Só o código dentro dos nodes que chama LLM é que muda.
+
+2. **Manter `LLMService` como fachada** — os nodes chamam
+   `get_llm_service(db).complete()` ou `chat_complete()`.
+   A interface não muda; só a implementação interna.
+
+3. **LangFuse callback é por-chain** — cada `chain.invoke(config={"callbacks": [handler]})`
+   cria um trace automático. Não precisa de chamar `lf.generation()` manualmente.
+
+4. **JsonOutputParser substitui `extract_json()`** — LCEL dá logo
+   o objecto Pydantic parseado. `extract_json()` pode ser removido.
+
+5. **OpenRouter é OpenAI-compatible** — `ChatOpenAI(model="google/gemini-2.0-flash-exp",
+   base_url="https://openrouter.ai/api/v1")` funciona sem changes ao modelo.
+
+---
+
+### 13.8 Verbose — diff mínimo por ficheiro
+
+```diff
+# requirements.txt
++ langchain-openai>=0.2.0
++ langchain-core>=0.3.0
+
+# llm_service.py
+- import httpx
+- resp = self._client().post(url, ...)
++ from langchain_openai import ChatOpenAI
++ self._llm = ChatOpenAI(model=..., base_url=..., api_key=...)
++ response = self._llm.invoke(messages)
+
+# langfuse_client.py
+- lf.generation(name=op, model=m, input=inp, output=out, usage=u)
++ return CallbackHandler(host=..., secret_key=..., public_key=...)
+
+# classification.py
+- def get_classification_prompt(...): return f"..." # string
++ classification_chain = PromptTemplate | ChatOpenAI | JsonOutputParser
++ def get_classification_chain(): return classification_chain
+
+# classify.py (node)
+- response = llm.complete(prompt=...)
+- parsed = extract_json(response)
+- trace_llm_call(...)
++ result = classification_chain.invoke(vars, config={"callbacks": [handler]})
++ # result = {priority, category, intent, confidence, ...}
+```
+
+---
+
+> **Compromisso:** Etapa 1-3 (requirements + llm_service + langfuse) é ~1h de trabalho.
+> Etapa 4-5 (classification + suggestion LCEL) é ~2h.
+> Etapa 6-7 (escalation + embeddings) é ~1h.
+> Total estimado: ~4-5h de trabalho.
