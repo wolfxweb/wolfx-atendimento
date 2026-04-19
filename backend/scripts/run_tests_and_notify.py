@@ -191,6 +191,7 @@ def main():
     parser.add_argument("--include-e2e", action="store_true")
     parser.add_argument("--e2e-dir", default="frontend/tests/e2e")
     parser.add_argument("--coverage", action="store_true")
+    parser.add_argument("--skip-tests", action="store_true", help="Only send notification, skip test execution")
     
     args = parser.parse_args()
     
@@ -201,7 +202,22 @@ def main():
     
     results = {}
     test_types = ["unit", "integration"]
-    
+
+    if args.skip_tests:
+        # Skip tests — just send a basic notification (no results to report)
+        print("Skipping test execution (--skip-tests)")
+        print("Sending basic notification...")
+        send_notification(
+            args.chat_id,
+            args.project,
+            args.branch,
+            args.commit,
+            {},
+            test_types
+        )
+        print("Notification sent.")
+        sys.exit(0)
+
     # Unit tests
     print("=" * 50)
     print("Executando testes UNITÁRIOS...")
@@ -210,7 +226,7 @@ def main():
     results["unit"] = parse_pytest_report(unit_result.get("report"))
     results["unit"]["output"] = unit_result["output"]
     results["unit"]["exit_code"] = unit_result["exit_code"]
-    
+
     # Integration tests
     print("=" * 50)
     print("Executando testes de INTEGRAÇÃO...")
