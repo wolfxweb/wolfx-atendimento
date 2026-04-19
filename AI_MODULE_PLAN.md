@@ -10,10 +10,11 @@ aprovação humana para ações críticas. O scheduler verifica tickets pendente
 a cada 5 minutos e acciona workflows LangGraph que usam LLM para
 classificar, sugerir respostas, buscar artigos KB e escalar quando necessário.
 
-**Modelo LLM:** OpenRouter — `google/gemini-2.0-flash-exp` (classificação, resposta, agente com tools)
+**Modelo LLM:** OpenRouter — `google/gemini-2.0-flash-exp` (classificação, resposta sugerida, RAG)
 **Endpoint:** `https://openrouter.ai/api/v1`
-**Tool Calling:** Gemini 2.0 Flash supporta function calling — agente LangChain com tools
-**Arquitectura:** OpenRouter — Gemini para tudo (classificação, resposta, RAG, agente com tools)
+**Tool Calling:** NÃO USADO — Nós LangGraph chamam serviços Python directamente (sem LangChain)
+**Arquitectura:** LangGraph (node-based) + OpenRouter (LLM) + APScheduler (scheduler)
+**Traces:** LangFuse self-hosted em `https://langfuse.celx.com.br`
 **Custo:** ~$0.00-0.01/1M tokens (tier gratuito com limites)
 
 ---
@@ -82,14 +83,15 @@ classificar, sugerir respostas, buscar artigos KB e escalar quando necessário.
 │  OpenRouter (google/gemini-2.0-flash-exp)                       │
 │  • Classificação (chat completions básico)                       │
 │  • Geração de resposta sugerida                                  │
-│  • Tool calling para agente (search_kb, notify_agent, etc.)       │
-│  • Embeddings: Kazane/univoflabl/encoder_256                     │
+│  • RAG embeddings: MiniMax (text-embedding-002)                   │
 │                                                                   │
 │  ⚠️ OpenRouter NÃO sabe:                                          │
 │  • O que é um ticket, cliente, SLA                               │
 │  • Quando pedir aprovação                                         │
 │  • Quem é o agente responsável                                    │
 │  • Thresholds de confiança                                        │
+│  • Tool calling NÃO usado — nodes LangGraph chamam Python        │
+│    serviços directamente (sem LangChain)                         │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -854,7 +856,11 @@ Responde en JSON com os campos:
 )
 ```
 
-### 6.3 OpenRouter Agent com Tools (function calling)
+### 6.3 OpenRouter Agent com Tools (function calling) — NÃO USADO
+
+> ⚠️ **DEPRECATED:** Esta secção describe um agente LangChain com tool calling.
+> A implementação real **NÃO usa LangChain** — os nodes LangGraph chamam
+> serviços Python directamente. Mantido apenas como referência histórica.
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -1237,29 +1243,39 @@ TELEGRAM_CHAT_ID=1229273513
 
 ## 12. Roadmap de Implementação
 
-### Fase 1 — Infraestrutura base
-- [ ] Tabelas: `ai_workflow_executions`, `ai_approvals`, `ai_audit_log`, `ai_ticket_suggestions`
-- [ ] Models SQLAlchemy em `app/ai/models/`
-- [ ] API routes: `GET/POST /ai/approvals`, `POST /approve`, `POST /reject`
-- [ ] Frontend: `/admin/ai-approvals` com lista + modal de detalhe/aprovar/rejeitar
-- [ ] Service `AIApprovalService`
+> **Estado: ✅ Implementado** — deploy completo em produção (2026-04-19)
 
-### Fase 2 — Scheduler
-- [ ] `AISchedulerService` com APScheduler (every 5 min)
-- [ ] `TicketSelector` — queries de elegibilidade
-- [ ] Advisory lock PostgreSQL
-- [ ] Batching: limite 5 execuções concurrently
+### Fase 1 — Infraestrutura base ✅
+- [x] Tabelas: `ai_workflow_executions`, `ai_approvals`, `ai_audit_log`, `ai_ticket_suggestions`
+- [x] Models SQLAlchemy em `app/models/ai_models.py`
+- [x] API routes: `GET/POST /ai/approvals`, `POST /approve`, `POST /reject`
+- [x] Frontend: `/admin/ai-approvals` com lista + modal de detalhe/aprovar/rejeitar
+- [x] Service `AIApprovalService` (integrado nos nodes)
 
-### Fase 3 — LangGraph Core
-- [ ] `TicketAgentState` TypedDict
-- [ ] Grafo: classify → check_approval → rag → suggest → finalize
-- [ ] Checkpointer PostgreSQL
-- [ ] `interrupt_before=["human_approval_handler"]`
+### Fase 2 — Scheduler ✅
+- [x] `AISchedulerService` com APScheduler (every 5 min)
+- [x] `TicketSelector` — queries de elegibilidade
+- [x] Advisory lock PostgreSQL
+- [x] Batching: limite 5 execuções concurrently
 
-### Fase 4 — Chains (OpenRouter)
-- [ ] Classification chain + output parser
-- [ ] Response suggestion chain
-- [ ] RAG chain com embeddings
+### Fase 3 — LangGraph Core ✅
+- [x] `TicketAgentState` TypedDict (`app/ai/workflows/states.py`)
+- [x] Grafo: classify → check_approval → rag_lookup → suggest_response → sla_review → escalate → finalize + human_approval (8 nós)
+- [x] Checkpointer PostgreSQL (`langgraph-checkpoint-postgres`)
+- [x] `interrupt_before=["human_approval"]`
 
-### Fase 5 — OpenRouter Agent (tools)
-- [ ] Tools: get_ticket, update_ti
+### Fase 4 — Chains (OpenRouter) ✅
+- [x] Classification chain + output parser (`app/ai/chains/classification.py`)
+- [x] Response suggestion chain (`app/ai/chains/suggestion.py`)
+- [x] RAG chain com embeddings MiniMax (`app/ai/chains/rag.py`)
+
+### Fase 5 — Ferramentas e Tracing ✅
+- [x] LangFuse self-hosted (`https://langfuse.celx.com.br`) — tracing de todos os LLM calls
+- [x] Nodes chamam serviços Python directamente (sem LangChain, sem tool calling)
+- [x] Tools: `escalate_ticket_service`, `notify_telegram`, `log_audit` — chamadas directas
+
+### Pendências
+
+- [ ] Criar tabelas de checkpoint LangGraph na DB (`checkpoints`, `checkpoint_writes`)
+- [ ] Variáveis de ambiente `WORKFLOW_ENABLED=true`, `LANGFUSE_*` no serviço de produção
+- [ ] Verificar se `ai_embeddings` / pipeline RAG PDF está activo na produção
