@@ -211,12 +211,16 @@ jobs:
           import sys
           sys.path.insert(0, 'backend')
           from app.utils.notifications import send_deploy_success
-          send_deploy_success(
-            chat_ids=['${{ secrets.TELEGRAM_CHAT_ID }}'],
-            project_name='wolfx-atendimento',
-            environment='production',
-            version='${{ github.sha }}',
-            deployed_by='CI/CD'
-          )
-          print('Deploy notification sent')
-          "
+          chat_id = '${{ secrets.TELEGRAM_CHAT_ID }}'.strip()
+          if chat_id:
+            send_deploy_success(
+              chat_ids=[chat_id],
+              project_name='wolfx-atendimento',
+              environment='production',
+              version='${{ github.sha }}',
+              deployed_by='CI/CD'
+            )
+            print('Deploy notification sent')
+          else:
+            print('TELEGRAM_CHAT_ID not configured, skipping notification')
+          " || echo "Notification failed but build succeeded"
