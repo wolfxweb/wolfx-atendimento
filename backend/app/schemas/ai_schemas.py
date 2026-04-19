@@ -4,8 +4,8 @@ All AI approval/monitoring schemas
 """
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
-from pydantic import BaseModel
+from typing import Optional, Literal
+from pydantic import BaseModel, Field
 from uuid import UUID
 
 
@@ -279,3 +279,120 @@ class AIStatsResponse(BaseModel):
     avg_confidence: Optional[Decimal] = None
     dry_run_matches: int
     executions_running: int
+
+
+# ── AI Models Config ─────────────────────────────────────────
+class AIModelBase(BaseModel):
+    name: str = Field(..., max_length=100)
+    type: Literal["llm", "embedding"]
+    provider: str = Field(..., max_length=50)
+    model_id: str = Field(..., max_length=200)
+    api_base: Optional[str] = Field(None, max_length=500)
+    api_key_ref: Optional[str] = Field(None, max_length=100)
+    temperature: Decimal = Field(default=Decimal("0.7"), ge=0, le=2)
+    max_tokens: Optional[int] = None
+    top_p: Optional[Decimal] = Field(None, ge=0, le=1)
+    top_k: Optional[int] = None
+    dimension: Optional[int] = None
+    description: Optional[str] = None
+
+
+class AIModelCreate(AIModelBase):
+    is_default: bool = False
+
+
+class AIModelUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    temperature: Optional[Decimal] = Field(None, ge=0, le=2)
+    max_tokens: Optional[int] = None
+    top_p: Optional[Decimal] = Field(None, ge=0, le=1)
+    top_k: Optional[int] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
+
+
+class AIModelResponse(AIModelBase):
+    id: UUID
+    is_active: bool
+    is_default: bool
+    is_system: bool
+    model_metadata: dict = {}
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── AIPromptTemplate Schemas ───────────────────────────────────────
+
+class AIPromptTemplateBase(BaseModel):
+    name: str = Field(..., max_length=200)
+    type: str = Field(..., max_length=50)  # classification | suggestion | escalation | agent_system | rag_query
+    prompt_template: str = ""
+    variables: list[str] = []
+    model_type: str = Field(default="llm", max_length=20)  # llm | embedding
+    is_active: bool = True
+    is_default: bool = False
+
+
+class AIPromptTemplateCreate(AIPromptTemplateBase):
+    customer_id: Optional[UUID] = None
+
+
+class AIPromptTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=200)
+    prompt_template: Optional[str] = None
+    variables: Optional[list[str]] = None
+    model_type: Optional[str] = Field(None, max_length=20)
+    is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
+
+
+class AIPromptTemplateResponse(AIPromptTemplateBase):
+    id: UUID
+    is_system: bool
+    customer_id: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── AITool Schemas ────────────────────────────────────────────────
+
+class AIToolBase(BaseModel):
+    name: str = Field(..., max_length=100)
+    description: Optional[str] = None
+    tool_type: str = Field(..., max_length=50)  # notification | ticket_update | knowledge_base | external_api | classification
+    parameters: dict = {}
+    code_template: Optional[str] = None
+    is_active: bool = True
+    is_default: bool = False
+
+
+class AIToolCreate(AIToolBase):
+    customer_id: Optional[UUID] = None
+
+
+class AIToolUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = None
+    tool_type: Optional[str] = Field(None, max_length=50)
+    parameters: Optional[dict] = None
+    code_template: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
+
+
+class AIToolResponse(AIToolBase):
+    id: UUID
+    is_system: bool
+    customer_id: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

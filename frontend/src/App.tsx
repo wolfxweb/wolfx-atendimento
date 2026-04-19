@@ -28,6 +28,8 @@ import AIApprovals from './pages/admin/AIApprovals';
 import AIActivity from './pages/admin/AIActivity';
 import AIMetrics from './pages/admin/AIMetrics';
 import AIRules from './pages/admin/AIRules';
+import AIFerramentas from './pages/admin/AIFerramentas';
+import AIAgent from './pages/admin/AIAgent';
 import KBRAG from './pages/admin/KBRAG';
 import CustomerProducts from './pages/customer/Products';
 
@@ -162,6 +164,15 @@ function AppRoutes() {
       } />
       <Route path="/admin/ai/regras" element={
         <ProtectedRoute roles={['admin']}><AIRules /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/aprovacoes" element={
+        <ProtectedRoute roles={['admin']}><AIApprovals /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/agente" element={
+        <ProtectedRoute roles={['admin']}><AIAgent /></ProtectedRoute>
+      } />
+      <Route path="/admin/ai/ferramentas" element={
+        <ProtectedRoute roles={['admin']}><AIFerramentas /></ProtectedRoute>
       } />
       <Route path="/admin/ai/kb-rag" element={
         <ProtectedRoute roles={['admin', 'agent']}><KBRAG /></ProtectedRoute>

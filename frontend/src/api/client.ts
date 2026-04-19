@@ -606,3 +606,105 @@ export const updateAIRule = (id: string, data: Partial<{
 }>) => api.patch(`/ai/rules/${id}`, data);
 
 export const deleteAIRule = (id: string) => api.delete(`/ai/rules/${id}`);
+
+// AI Models
+export const getAIModels = (params?: { type?: string; is_active?: boolean }) =>
+  api.get('/ai/models', { params });
+
+export const createAIModel = (data: {
+  name: string;
+  type: 'llm' | 'embedding';
+  provider: string;
+  model_id: string;
+  api_key_ref?: string;
+  is_active?: boolean;
+  is_default?: boolean;
+  model_metadata?: Record<string, any>;
+}) => api.post('/ai/models', data);
+
+export const updateAIModel = (id: string, data: Partial<{
+  name: string;
+  provider: string;
+  model_id: string;
+  api_key_ref: string;
+  is_active: boolean;
+  is_default: boolean;
+  model_metadata: Record<string, any>;
+}>) => api.patch(`/ai/models/${id}`, data);
+
+export const deleteAIModel = (id: string) => api.delete(`/ai/models/${id}`);
+
+// AI Prompt Templates
+export const getAIPromptTemplates = (params?: { type?: string; is_active?: boolean; customer_id?: string }) =>
+  api.get('/ai/prompt-templates', { params });
+
+export const createAIPromptTemplate = (data: {
+  name: string;
+  type: string;
+  prompt_template: string;
+  variables?: string[];
+  model_type?: string;
+  is_active?: boolean;
+  is_default?: boolean;
+  customer_id?: string;
+}) => api.post('/ai/prompt-templates', data);
+
+export const updateAIPromptTemplate = (id: string, data: Partial<{
+  name: string;
+  prompt_template: string;
+  variables: string[];
+  model_type: string;
+  is_active: boolean;
+  is_default: boolean;
+}>) => api.patch(`/ai/prompt-templates/${id}`, data);
+
+export const deleteAIPromptTemplate = (id: string) => api.delete(`/ai/prompt-templates/${id}`);
+
+export const toggleAIPromptTemplateActive = (id: string) =>
+  api.patch(`/ai/prompt-templates/${id}/activate`);
+
+export const setAIPromptTemplateDefault = (id: string) =>
+  api.patch(`/ai/prompt-templates/${id}/default`);
+
+// AI Tools
+export const getAITools = (params?: { tool_type?: string; is_active?: boolean; customer_id?: string }) =>
+  api.get('/ai/tools', { params });
+
+export const createAITool = (data: {
+  name: string;
+  description?: string;
+  tool_type: string;
+  parameters?: Record<string, any>;
+  code_template?: string;
+  is_active?: boolean;
+  is_default?: boolean;
+  customer_id?: string;
+}) => api.post('/ai/tools', data);
+
+export const updateAITool = (id: string, data: Partial<{
+  name: string;
+  description: string;
+  tool_type: string;
+  parameters: Record<string, any>;
+  code_template: string;
+  is_active: boolean;
+  is_default: boolean;
+}>) => api.patch(`/ai/tools/${id}`, data);
+
+export const deleteAITool = (id: string) => api.delete(`/ai/tools/${id}`);
+
+export const toggleAIToolActive = (id: string) =>
+  api.patch(`/ai/tools/${id}/activate`);
+
+export const setAIToolDefault = (id: string) =>
+  api.patch(`/ai/tools/${id}/default`);
+
+// AI Config (agent settings)
+export const getAIConfig = () =>
+  api.get('/ai/config');
+
+export const updateAIConfig = (data: {
+  dry_run?: boolean;
+  workflow_enabled?: boolean;
+  auto_reply_enabled?: boolean;
+}) => api.patch('/ai/config', data);

@@ -28,7 +28,8 @@ class AIWorkflowExecution(Base):
     interrupted_at   = Column(DateTime)
     interrupted_state = Column(JSON)
     latency_ms       = Column(Integer)
-    llm_model        = Column(String(50), default='MiniMax-Text-01')
+    llm_model        = Column(String(50), default='google/gemini-2.0-flash-exp')
+    dry_run          = Column(Boolean, default=True)
     started_at       = Column(DateTime, default=datetime.utcnow)
     finished_at      = Column(DateTime)
     created_at       = Column(DateTime, default=datetime.utcnow)
@@ -179,3 +180,114 @@ class AIApprovalRule(Base):
     trigger_count             = Column(Integer, default=0)
 
     creator = relationship("User")
+
+
+class AIModel(Base):
+    """Configuração de modelos LLM e Embedding — permite ao utilizador selecionar qual usar."""
+    __tablename__ = "ai_models"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    type = Column(String(20), nullable=False)  # 'llm' | 'embedding'
+    provider = Column(String(50), nullable=False)  # 'openrouter' | 'openai' | 'anthropic'
+    model_id = Column(String(200), nullable=False)  # 'google/gemini-2.0-flash-exp'
+    api_base = Column(String(500), nullable=True)
+    api_key_ref = Column(String(100), nullable=True)  # env var name that holds the key
+    temperature = Column(Numeric(3, 2), default=0.7)
+    max_tokens = Column(Integer, nullable=True)
+    top_p = Column(Numeric(3, 2), nullable=True)
+    top_k = Column(Integer, nullable=True)
+    dimension = Column(Integer, nullable=True)  # para embeddings
+    is_active = Column(Boolean, default=False)
+    is_default = Column(Boolean, default=False)
+    is_system = Column(Boolean, default=False)  # criado pelo sistema — não pode apagar
+    description = Column(Text, nullable=True)
+    model_metadata = Column(JSON, default={})  # renamed: 'metadata' is reserved in SQLAlchemy
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AIPromptTemplate(Base):
+    """Templates de prompts AI — permitem configuração por cliente e tipo de operação."""
+    __tablename__ = "ai_prompt_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(200), nullable=False)
+    type = Column(String(50), nullable=False)  # classification | suggestion | escalation | agent_system | rag_query
+    prompt_template = Column(Text, nullable=False)
+    variables = Column(JSON, default=[])  # ['title', 'description', 'category']
+    model_type = Column(String(20), nullable=False, default='llm')  # llm | embedding
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    is_system = Column(Boolean, default=False)  # criado pelo sistema — não pode apagar
+    customer_id = Column(UUID(as_uuid=True), ForeignKey('customers.id', ondelete='SET NULL'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    customer = relationship("Customer")
+
+
+class AITool(Base):
+    """Ferramentas que o agente AI pode usar — notify_agent, update_ticket_field, etc."""
+    __tablename__ = "ai_tools"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    tool_type = Column(String(50), nullable=False)
+    parameters = Column(JSON, default={})
+    code_template = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    is_system = Column(Boolean, default=False)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey('customers.id', ondelete='SET NULL'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    customer = relationship("Customer")
+
+
+class AITicketClassification(Base):
+    """Resultados de classificação de tickets pelo agente AI."""
+    __tablename__ = "ai_ticket_classifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=False)
+    execution_id = Column(UUID(as_uuid=True), ForeignKey("ai_workflow_executions.id"), nullable=True)
+
+    category = Column(String(100), nullable=True)
+    priority = Column(String(20), nullable=True)
+    sentiment = Column(String(30), nullable=True)
+    intent = Column(String(100), nullable=True)
+    confidence = Column(Numeric(5, 4), nullable=True)
+    language = Column(String(10), nullable=True)
+
+    classified_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    ticket = relationship("Ticket")
+    execution = relationship("AIWorkflowExecution")
+
+
+class AITicketEscalation(Base):
+    """Resultados de decisão de escalação de tickets."""
+    __tablename__ = "ai_ticket_escalations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=False)
+    execution_id = Column(UUID(as_uuid=True), ForeignKey("ai_workflow_executions.id"), nullable=True)
+
+    should_escalate = Column(Boolean, nullable=True)
+    escalation_reason = Column(Text, nullable=True)
+    confidence = Column(Numeric(5, 4), nullable=True)
+    priority = Column(String(20), nullable=True)
+
+    decided_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    ticket = relationship("Ticket")
+    execution = relationship("AIWorkflowExecution")

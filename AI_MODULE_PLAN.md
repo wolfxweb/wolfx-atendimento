@@ -10,53 +10,122 @@ aprovação humana para ações críticas. O scheduler verifica tickets pendente
 a cada 5 minutos e acciona workflows LangGraph que usam LLM para
 classificar, sugerir respostas, buscar artigos KB e escalar quando necessário.
 
-**Modelo LLM:** MiniMax (`sk-cp-***`) — 100% das tarefas
-**Endpoint:** `https://api.minimax.chat/v1`
-**Tool Calling:** MiniMax supporta function calling — agente LangChain com tools
-**Arquitectura:** MiniMax-only — um modelo para tudo (classificação, resposta, RAG, agente com tools)
+**Modelo LLM:** OpenRouter — `google/gemini-2.0-flash-exp` (classificação, resposta, agente com tools)
+**Endpoint:** `https://openrouter.ai/api/v1`
+**Tool Calling:** Gemini 2.0 Flash supporta function calling — agente LangChain com tools
+**Arquitectura:** OpenRouter — Gemini para tudo (classificação, resposta, RAG, agente com tools)
+**Custo:** ~$0.00-0.01/1M tokens (tier gratuito com limites)
 
 ---
 
-## 2. Arquitectura MiniMax — Responsabilidades
+## 2. Arquitectura de Camadas — OpenRouter como Motor de LLM
+
+> **PRINCÍPIO FUNDAMENTAL:** OpenRouter é apenas o "motor de inferência" — uma caixa preta
+> que recebe texto e devolve texto. NÃO tem regras de negócio. Todas as decisões
+> (quando pedir aprovação, a quem escalar, thresholds, etc.) são **código Python**.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  SCHEDULER (APScheduler — a cada 5 min)                     │
-│  • Busca tickets elegíveis                                  │
-│  • Dispara workflow via thread (não bloqueia scheduler)     │
-│  • Limite: máx 5 execuções concurrently                    │
-│  • Advisory lock PostgreSQL para evitar overlap             │
-└──────────────────────┬──────────────────────────────────────┘
-                     │ dispatch
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│  LANGGRAPH WORKFLOW ENGINE                                  │
-│  • Estado: TicketAgentState (TypedDict)                     │
-│  • Persistência: PostgreSQL (checkpointer LangGraph)        │
-│  • Pontos de interrupção: human_approval                    │
-│  • Retry: máx 3 vezes por nó                              │
-└──────────┬──────────────────────────────────────────────────┘
-           │
-           ├──► MiniMax (classificação)
-           │    ─ Sem tool calling — chat completions básico
-           │    ─ Prompt com output JSON (JsonOutputParser)
-           │
-           ├──► MiniMax (resposta sugerida + RAG query)
-           │    ─ Sem tool calling — gera texto e query de busca
-           │
-           ├──► MiniMax (agente com tools)
-           │    ─ Tool calling activo — function calling nativo
-           │    ─ Tools: get_ticket, update_ticket_field,
-           │              notify_agent, save_suggestion,
-           │              escalate_ticket, search_kb
-           │
-           └──► HUMAN-IN-LOOP (interrupção)
-                ─ Grava checkpoint LangGraph
-                ─ Cria AIApproval no banco
-                ─ Notifica agentes (Telegram)
-                ─ Aguarda aprovação via API
-                ─ Resume do checkpoint após aprovação
+┌──────────────────────────────────────────────────────────────────┐
+│  CAMADA 1 — ORQUESTRAÇÃO (Python)                                │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │  SCHEDULER (APScheduler — a cada 5 min)                    │  │
+│  │  • Busca tickets elegíveis                                  │  │
+│  │  • Dispara workflow via thread                              │  │
+│  │  • Advisory lock PostgreSQL                                 │  │
+│  └────────────────────────┬────────────────────────────────────┘  │
+│                            │                                      │
+│  ┌────────────────────────▼────────────────────────────────────┐  │
+│  │  LANGGRAPH WORKFLOW ENGINE                                  │  │
+│  │  • TicketAgentState (TypedDict) — estado partilhado         │  │
+│  │  • PostgreSQL checkpointer (persistência entre-interrompções)│  │
+│  │  • interrupt_before=["human_approval_handler"]              │  │
+│  │  • Retry: máx 3 vezes por nó                               │  │
+│  └────────────────────────┬────────────────────────────────────┘  │
+└───────────────────────────│────────────────────────────────────────┘
+                            │
+┌───────────────────────────│────────────────────────────────────────┐
+│  CAMADA 2 — NÓS DO GRAFO (Python = REGRAS DE NEGÓCIO)            │
+│                            │                                      │
+│  ┌─────────────────────────▼────────────────────────────────────┐ │
+│  │  classify_node() — Python                                    │ │
+│  │  1. Prepara prompt → OpenRouter                              │ │
+│  │  2. Recebe classificação JSON                                 │ │
+│  │  3. APLICA REGRAS: if confidence < 0.70 → needs_approval    │ │
+│  │  4. Atualiza TicketAgentState                                │ │
+│  └────────────────────────┬────────────────────────────────────┘  │
+│                            │                                      │
+│  ┌─────────────────────────▼────────────────────────────────────┐ │
+│  │  check_approval_needed_node() — Python                        │ │
+│  │  REGRAS: priority=urgent OR intent=refund → needs_approval   │ │
+│  └────────────────────────┬────────────────────────────────────┘  │
+│                            │                                      │
+│  ┌─────────────────────────▼────────────────────────────────────┐ │
+│  │  suggest_response_node() — Python                            │ │
+│  │  1. Prepara prompt + KB articles → OpenRouter               │ │
+│  │  2. Recebe resposta sugerida                                │ │
+│  │  3. Se has_action=True → needs_approval                     │ │
+│  │  4. Grava em ai_ticket_suggestions                          │ │
+│  └────────────────────────┬────────────────────────────────────┘  │
+│                            │                                      │
+│  ┌─────────────────────────▼────────────────────────────────────┐ │
+│  │  human_approval_handler() — Python                           │ │
+│  │  1. Grava AIApproval no banco                               │ │
+│  │  2. Notifica agentes via Telegram                            │ │
+│  │  3. PAUSA (LangGraph interrupt) — aguarda decisão humana     │ │
+│  │  4. Após decisão: resume workflow com human_decision         │ │
+│  └─────────────────────────────────────────────────────────────┘  │
+└───────────────────────────│────────────────────────────────────────┘
+                            │
+┌───────────────────────────│────────────────────────────────────────┐
+│  CAMADA 3 — LLM (OpenRouter = Motor, SEM REGRAS)                 │
+│                            │                                      │
+│  OpenRouter (google/gemini-2.0-flash-exp)                       │
+│  • Classificação (chat completions básico)                       │
+│  • Geração de resposta sugerida                                  │
+│  • Tool calling para agente (search_kb, notify_agent, etc.)       │
+│  • Embeddings: Kazane/univoflabl/encoder_256                     │
+│                                                                   │
+│  ⚠️ OpenRouter NÃO sabe:                                          │
+│  • O que é um ticket, cliente, SLA                               │
+│  • Quando pedir aprovação                                         │
+│  • Quem é o agente responsável                                    │
+│  • Thresholds de confiança                                        │
+└───────────────────────────────────────────────────────────────────┘
 ```
+
+### 2.1 Separação de Responsabilidades
+
+| Componente | Responsabilidade | Onde vive |
+|---|---|---|
+| **Scheduler** | Quando disparar (5 em 5 min) | `app/ai/scheduler/scheduler_service.py` |
+| **Workflow (LangGraph)** | Orquestrar nós, persistir estado, pausar/resumir | `app/ai/workflows/ticket_agent.py` |
+| **Nós (Python)** | Regras de negócio, interpretar resultados LLM, decidir próximos passos | `app/ai/workflows/nodes/*.py` |
+| **Chains (prompts)** | Apenas transformar dados → prompt e prompt → struct | `app/ai/chains/*.py` |
+| **OpenRouter (LLM)** | Apenas inferência: texto entra, texto sai |调用外部 API |
+| **Tools (Python)** | Ações que o agente pode executar (notificar, gravar, etc.) | `app/ai/tools/*.py` |
+| **Services** | Lógica de domínio: approval workflow, SLA, notificações | `app/services/*.py` |
+
+### 2.2 Exemplo — Fluxo Completo de Classificação
+
+```
+1. Scheduler encontra ticket novo → dispatch
+2. classify_node() é chamado (Python)
+   ├─ Prepara prompt: "Classifica: título=X, descrição=Y"
+   ├─ openrouter_llm.invoke(prompt)  ──► OpenRouter API
+   │                                    ◄── {"priority": "high", "confidence": 0.65, ...}
+   ├─ classification = response.parsed
+   │
+   ├─ REGRAS DE NEGÓCIO (Python):
+   │   if classification["confidence"] < 0.70:
+   │       state["needs_approval"] = True   ← NÃO é o LLM que decide!
+   │   elif classification["intent"] == "refund":
+   │       state["needs_approval"] = True
+   │
+   └─ state["classification"] = classification
+      return state
+```
+
+> **OpenRouter** = motor. **Código Python** = cérebro que decide o que fazer com o resultado.
 
 ---
 
@@ -67,7 +136,7 @@ classificar, sugerir respostas, buscar artigos KB e escalar quando necessário.
                     │                                          │
                     │  pendente_classificacao                  │
                     │  ┌──────────────────────────────────┐    │
-                    │  │  IA classifica (MiniMax)         │    │
+                    │  │  IA classifica (OpenRouter)      │    │
                     │  │  confidence < 0.70 → aprova     │    │
                     │  │  priority=urgent → aprova        │    │
                     │  │  intent=refund/legal → aprova    │    │
@@ -94,7 +163,7 @@ classificar, sugerir respostas, buscar artigos KB e escalar quando necessário.
                     │                                          │
                     │  pendente_sla_review                     │
                     │  ┌──────────────────────────────────┐    │
-                    │  │  IA revê SLA (Groq agent)         │    │
+                    │  │  IA revê SLA (OpenRouter agent)   │    │
                     │  │  breach/at-risk → escalonamento  │    │
                     │  └──────────────────────────────────┘    │
                     │                                          │
@@ -206,7 +275,7 @@ CREATE TABLE ai_audit_log (
         -- 'node_entered'        — nó LangGraph entrou
         -- 'node_exited'         — nó LangGraph saiu
         -- 'llm_called'          — chamada a GPT-4.5-nano
-        -- 'agent_tool_called'   — Groq agent executou tool
+        -- 'agent_tool_called'   — OpenRouter agent executou tool
         -- 'approval_requested'  — pausa para aprovação humana
         -- 'approval_received'   — humano decidiu
         -- 'workflow_resumed'    — retomar após aprovação
@@ -216,7 +285,7 @@ CREATE TABLE ai_audit_log (
     node_name        VARCHAR(100),
     actor            VARCHAR(20) NOT NULL,      -- 'ai' | 'human' | 'system'
     details          JSONB,
-    llm_model        VARCHAR(50),              -- 'MiniMax-Text-01'
+    llm_model        VARCHAR(50),              -- 'google/gemini-2.0-flash-exp'
     llm_prompt_tokens   INTEGER,
     llm_completion_tokens INTEGER,
     latency_ms       INTEGER,
@@ -284,7 +353,7 @@ segmentação em chunks de ~500 caracteres, e pesquisa semântica.
      a) Baixar ficheiro de /tmp/kb_uploads/
      b) Extrair texto com PyPDF2 / pdfplumber
      c) Chunkar em segmentos de ~500 caracteres (overlap 50 chars)
-     d) Para cada chunk: gerar embedding MiniMax
+     d) Para cada chunk: gerar embedding OpenRouter
      e) Guardar em ai_embeddings com source_type e metadata
 3. Eliminar chunks órfãos do artigo (que já não existem)
 ```
@@ -302,7 +371,7 @@ CREATE TABLE ai_embeddings (
     source_id        UUID,                        -- attachment_id se for PDF
     chunk_index      INTEGER NOT NULL,
     content_chunk    TEXT NOT NULL,               -- texto segmentado
-    embedding        VECTOR(1024),                -- MiniMax embeddings (dim=1024)
+    embedding        VECTOR(1024),                -- OpenRouter embeddings (dim=1024)
     metadata         JSONB,                       -- {page, filename, char_count}
     created_at       TIMESTAMP DEFAULT NOW()
 );
@@ -335,16 +404,19 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]
     return chunks
 ```
 
-**Embedding com MiniMax:**
+**Embedding com OpenRouter:**
 
 ```python
 from langchain_openai import OpenAIEmbeddings
 
+# Opção gratuita (dim=256) — Recomendada para custo zero
 embeddings = OpenAIEmbeddings(
-    model="minimaxi/e5-embedding-02",  # MiniMax e5-embedding-02 (dim=1024)
-    openai_api_key=MINIMAX_API_KEY,
-    openai_api_base="https://api.minimax.chat/v1",
+    model="Kazane/univoflabl/encoder_256",
+    openai_api_key=OPENROUTER_API_KEY,
+    openai_api_base="https://openrouter.ai/api/v1",
 )
+# NOTA: Kazane suporta apenas query (não batch). Para batch usar:
+# EMBEDDINGS_MODEL=mixedbread/mxbai-embeddings-v1 (dim=1024)
 ```
 
 **Pesquisa RAG (no workflow LangGraph):**
@@ -352,7 +424,7 @@ embeddings = OpenAIEmbeddings(
 ```python
 def rag_lookup(query: str, article_ids: list[str] = None, top_k: int = 5):
     """
-    1. Gera embedding da query com MiniMax
+    1. Gera embedding da query com OpenRouter
     2. Busca top_k chunks mais similares (cosine similarity)
     3. Se article_ids: filtra só chunks desses artigos
     4. Retorna chunks + score de similaridade
@@ -596,16 +668,77 @@ class TicketAgentState(TypedDict, total=False):
 
 ### 5.2 Nós do Grafo
 
-| Nó | Descrição | Modelo |
-|---|---|---|
-| `classify` | Classifica ticket (priority, category, intent, language) | GPT-4.5-nano |
-| `check_approval_needed` | Decide se precisa aprovação humana | Código Python |
-| `rag_lookup` | Busca artigos KB por embedding similarity | GPT-4.5-nano (query) |
-| `suggest_response` | Gera sugestão de resposta + detecta acções operacionais | GPT-4.5-nano |
-| `sla_review` | Revê SLA e detecta breach/at-risk | Groq agent |
-| `escalate` | Escalona ticket para agente/supervisor | Groq agent (tool) |
-| `finalize` | Grava resultados no banco, actualiza ticket | Código Python |
-| `human_approval_handler` | Processa resultado da aprovação humana | Código Python |
+> **IMPORTANTE:** Cada nó é **código Python** que pode invocar o OpenRouter (LLM).
+> A coluna "Motor LLM" indica qual nó **faz chamada externa** ao OpenRouter.
+
+| Nó | Descrição | Motor LLM | O que faz |
+|---|---|---|---|
+| `classify_node` | Classifica ticket | **google/gemini-2.0-flash-exp** | Prepara prompt → chama LLM → interpreta resultado JSON → aplica regras |
+| `check_approval_needed` | Decide se precisa aprovação humana | — (Python only) | Avalia: confidence < 0.70, priority=urgent, intent=refund → needs_approval |
+| `rag_lookup_node` | Busca artigos KB por similarity | **google/gemini-2.0-flash-exp** | Gera query de embedding → busca PGVector → retorna artigos |
+| `suggest_response_node` | Gera resposta sugerida | **google/gemini-2.0-flash-exp** | Prepara prompt + KB context → chama LLM → parsing JSON |
+| `sla_review_node` | Revê SLA e detecta breach/at-risk | — (Python only) | Calcula tempos SLA, verifica breach risk → decide se escalar |
+| `escalate_node` | Escalona ticket para agente | **google/gemini-2.0-flash-exp** (tool) | Agent tool calling: notify_agent, update_ticket_field |
+| `finalize_node` | Grava resultados no banco | — (Python only) | UPDATE ticket, INSERT ai_ticket_suggestions, UPDATE execution |
+| `human_approval_handler` | Processa aprovação humana | — (Python only) | Grava AIApproval, notifica Telegram, PAUSA workflow |
+
+### 5.2.1 Implementação Tipo de um Nó
+
+```python
+# app/ai/workflows/nodes/classify.py
+
+from app.ai.chains.classification import classification_chain
+from app.services.audit_service import log_audit
+
+def classify_node(state: TicketAgentState) -> TicketAgentState:
+    """
+    Nó Python — classifica ticket usando OpenRouter como motor de LLM.
+    Regras de negócio (threshold, condições de aprovação) são TODAS em Python.
+    """
+    ticket = state["ticket_data"]
+
+    # 1. Preparar input para o LLM (Chain = prompt + parsing)
+    classification_raw = classification_chain.invoke({
+        "title": ticket["title"],
+        "description": ticket["description"],
+        "history": ticket.get("history", ""),
+    })
+
+    # 2. Interpolar resultado (JsonOutputParser → Pydantic model)
+    classification = classification_raw.parsed
+
+    # 3. REGRAS DE NEGÓCIO — Python decide, não o LLM
+    needs_approval = False
+    reasons = []
+
+    if classification.confidence < 0.70:
+        needs_approval = True
+        reasons.append(f"confiança baixa ({classification.confidence})")
+
+    if classification.intent in ["refund", "legal", "data_deletion"]:
+        needs_approval = True
+        reasons.append(f"intent sensível ({classification.intent})")
+
+    if classification.priority == "urgent":
+        needs_approval = True
+        reasons.append("priority urgent")
+
+    # 4. Log de auditoria
+    log_audit(
+        execution_id=state["execution_id"],
+        action="node_exited",
+        node_name="classify",
+        details={"classification": classification.model_dump(), "needs_approval": needs_approval}
+    )
+
+    # 5. Atualizar estado (NÃO é o LLM que decide o próximo passo)
+    state["classification"] = classification.model_dump()
+    state["needs_approval"] = needs_approval
+    state["approval_reasons"] = reasons
+    state["pending_approval"] = needs_approval
+
+    return state
+```
 
 ### 5.3 Routing Edges
 
@@ -647,7 +780,7 @@ este nó, o LangGraph pausa e guarda checkpoint automaticamente.
 
 ## 6. LangChain — Chains e Tools
 
-### 6.1 Classification Chain (MiniMax)
+### 6.1 Classification Chain (OpenRouter)
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -664,10 +797,10 @@ class ClassificationOutput(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, description="Certeza da classificação")
     reason:     str = Field(description="Justificativa curta")
 
-minimax_llm = ChatOpenAI(
-    model="MiniMax-Text-01",
-    openai_api_key=MINIMAX_API_KEY,
-    openai_api_base="https://api.minimax.chat/v1",
+openrouter_llm = ChatOpenAI(
+    model="google/gemini-2.0-flash-exp",
+    openai_api_key=OPENROUTER_API_KEY,
+    openai_api_base="https://openrouter.ai/api/v1",
 )
 
 classification_chain = (
@@ -681,12 +814,12 @@ HISTORIAL: {history}
 Responda em JSON com os campos: priority, category, intent, language, summary, confidence, reason.
 Confidence: número entre 0.0 e 1.0.
 """)
-    | minimax_llm
+    | openrouter_llm
     | JsonOutputParser(pydantic_object=ClassificationOutput)
 )
 ```
 
-### 6.2 Response Suggestion Chain (MiniMax)
+### 6.2 Response Suggestion Chain (OpenRouter)
 
 ```python
 response_chain = (
@@ -716,12 +849,12 @@ Responde en JSON com os campos:
 - operational_action: descripción da ação se has_action=true, se não null
 - references: lista de IDs de artículos KB usados como referência
 """)
-    | minimax_llm  # Reusa MiniMax
+    | openrouter_llm
     | JsonOutputParser()
 )
 ```
 
-### 6.3 MiniMax Agent com Tools (function calling)
+### 6.3 OpenRouter Agent com Tools (function calling)
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -768,14 +901,13 @@ def log_audit(execution_id: str, action: str, details: dict,
     """Regista uma entrada no log de auditoria ai_audit_log."""
     pass
 
-# ── Agent MiniMax ────────────────────────────────────────────
+# ── Agent OpenRouter ────────────────────────────────────────────
 
-# MiniMax com tool calling (via langchain-openai + custom base)
-minimax_llm = ChatOpenAI(
-    model="MiniMax-Text-01",           # ou o modelo com tool calling
-    openai_api_key=MINIMAX_API_KEY,
-    openai_api_base=MINIMAX_API_BASE,  # "https://api.minimax.chat/v1"
-    # Sem temperature — modelos MiniMax usam temperatura fixa
+# OpenRouter com tool calling (via langchain-openai + custom base)
+openrouter_llm = ChatOpenAI(
+    model="google/gemini-2.0-flash-exp",
+    openai_api_key=OPENROUTER_API_KEY,
+    openai_api_base="https://openrouter.ai/api/v1",
 )
 
 tools = [
@@ -783,7 +915,7 @@ tools = [
     notify_agent, escalate_ticket, search_kb, log_audit
 ]
 
-agent = create_react_agent(llm=minimax_llm, tools=tools)
+agent = create_react_agent(llm=openrouter_llm, tools=tools)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 ```
 
@@ -1039,8 +1171,8 @@ backend/app/ai/
 │       ├── classify.py        # Nó: classifica ticket (GPT-4.5-nano)
 │       ├── rag_lookup.py      # Nó: busca KB por embeddings
 │       ├── suggest_response.py # Nó: sugere resposta (GPT-4.5-nano)
-│       ├── sla_review.py      # Nó: revê SLA (Groq agent)
-│       ├── escalate.py        # Nó: escalona (Groq agent tool)
+│       ├── sla_review.py      # Nó: revê SLA (OpenRouter agent)
+│       ├── escalate.py        # Nó: escalona (OpenRouter agent tool)
 │       ├── finalize.py        # Nó: grava resultados no banco
 │       └── human_approval.py  # Handler pós-aprovação humana
 │
@@ -1060,7 +1192,7 @@ backend/app/ai/
 │
 ├── embeddings/
 │   ├── __init__.py
-│   ├── embed_service.py     # MiniMax/minimaxi embeddings
+│   ├── embed_service.py     # OpenRouter embeddings (Kazane ou mixedbread)
 │   └── index_manager.py     # Upsert embeddings no PGVector
 │
 ├── persistence/
@@ -1084,15 +1216,20 @@ frontend/src/pages/admin/
 ## 11. Variáveis de Ambiente
 
 ```env
-# MiniMax — 100% das tarefas LLM
-MINIMAX_API_KEY=sk-cp-vtYlQ6pnbxEJu-***       # Token MiniMax
-MINIMAX_API_BASE=https://api.minimax.chat/v1   # Endpoint fixo
+# OpenRouter — 100% das tarefas LLM
+OPENROUTER_API_KEY=***       # Token OpenRouter
+OPENROUTER_API_BASE=https://openrouter.ai/api/v1   # Endpoint fixo
+OPENROUTER_MODEL=google/gemini-2.0-flash-exp       # Modelo principal
 
-# PostgreSQL (LangGraph checkpointer + будущие vectores)
+# Embeddings (OpenRouter — gratuito, dim=256)
+EMBEDDINGS_MODEL=Kazane/univoflabl/encoder_256
+# Alternativa: mixedbread/mxbai-embeddings-v1 (dim=1024)
+
+# PostgreSQL (LangGraph checkpointer + vectores)
 DATABASE_URL=postgresql://postgres:***@postgres_postgres:5432/atendimento_db
 
 # Notificações
-TELEGRAM_BOT_TOKEN=8312031269:AAFto1ZfqRbj3e4mWYEBsV4KgaJ7GLGgVJ8
+TELEGRAM_BOT_TOKEN=***
 TELEGRAM_CHAT_ID=1229273513
 ```
 
@@ -1119,71 +1256,10 @@ TELEGRAM_CHAT_ID=1229273513
 - [ ] Checkpointer PostgreSQL
 - [ ] `interrupt_before=["human_approval_handler"]`
 
-### Fase 4 — Chains (MiniMax)
+### Fase 4 — Chains (OpenRouter)
 - [ ] Classification chain + output parser
 - [ ] Response suggestion chain
 - [ ] RAG chain com embeddings
 
-### Fase 5 — MiniMax Agent (tools)
-- [ ] Tools: get_ticket, update_ticket_field, save_suggestion, notify_agent
-- [ ] Agent: SLA review + escalate
-- [ ] Integration com workflow LangGraph
-
-### Fase 6 — Human-in-the-Loop
-- [ ] Interrupt + checkpoint storage
-- [ ] Approval resume via API
-- [ ] Notificações Telegram ao agente
-- [ ] Frontend: painel de aprovação com diff da sugestão
-
-### Fase 7 — RAG / Embeddings
-- [ ] Embedding pipeline KB articles
-- [ ] PGVector upsert
-- [ ] Semantic search no rag_lookup
-
-### Fase 8 — Observabilidade
-- [ ] `ai_audit_log` em todos os nós
-- [ ] Dashboard `/admin/ai-activity`
-- [ ] Métricas: tempo médio, accuracy, aprovações pendentes
-
----
-
-## 13. Regras Operacionais
-
-| Regra | Valor |
-|---|---|
-| Intervalo scheduler | 5 minutos |
-| Max execuções concurrently | 5 por scheduler run |
-| Max retries por nó | 3 |
-| TTL approval expirado | 24 horas |
-| Batch size por run | 20 tickets |
-| Threshold confiança baixa | < 0.70 → aprova sempre |
-| Aprovação obrigatória | priority=urgent, intent=refund/legal |
-| Timeout LLM call | 30 segundos |
-| Timeout Groq agent | 60 segundos |
-
----
-
-## 14. Auditoria e Compliance
-
-Todas as ações de IA são logadas em `ai_audit_log`:
-
-```json
-{
-  "action": "llm_called",
-  "execution_id": "uuid",
-  "ticket_id": "uuid",
-  "node_name": "classify",
-  "actor": "ai",
-  "llm_model": "gpt-4.5-nano",
-  "llm_prompt_tokens": 342,
-  "llm_completion_tokens": 89,
-  "latency_ms": 1243,
-  "details": {
-    "temperature": 0,
-    "finish_reason": "stop"
-  }
-}
-```
-
-Dados sensíveis (conteúdo de tickets, nomes de clientes) são **omitidos**
-ou hasheados nos logs de auditoria.
+### Fase 5 — OpenRouter Agent (tools)
+- [ ] Tools: get_ticket, update_ti

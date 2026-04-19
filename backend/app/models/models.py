@@ -358,7 +358,7 @@ class Ticket(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Novas colunas para hierarquia e controle de tempo
-    parent_ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=True)
+    parent_ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True)
     opened_at = Column(DateTime, nullable=True)
     attended_at = Column(DateTime, nullable=True)
     closed_at = Column(DateTime, nullable=True)
@@ -372,11 +372,18 @@ class Ticket(Base):
     agent = relationship("User", back_populates="assigned_tickets", foreign_keys=[agent_id])
     product = relationship("Product", back_populates="tickets")
     category = relationship("Category", back_populates="tickets")
-    comments = relationship("Comment", back_populates="ticket", order_by="Comment.created_at")
-    approvals = relationship("TicketApproval", back_populates="ticket")
+    comments = relationship("Comment", back_populates="ticket", order_by="Comment.created_at", cascade="all, delete-orphan")
+    approvals = relationship("TicketApproval", back_populates="ticket", cascade="all, delete-orphan")
     ticket_relations = relationship("TicketRelation", back_populates="source_ticket", cascade="all, delete-orphan", foreign_keys=[TicketRelation.source_ticket_id])
     sla = relationship("SLA", foreign_keys=[sla_id])
     # AI Module Phase 1
+    # AI Module — processing state tracking
+    ai_processing_status = Column(String(30), default="not_processed")  # not_processed | pending | running | awaiting_approval | completed | failed
+    ai_classification = Column(JSON, default=dict)   # {priority, category, intent, confidence, ...}
+    ai_suggested_response = Column(Text, nullable=True)
+    ai_last_action_at = Column(DateTime, nullable=True)
+
+    # Relationships
     ai_executions  = relationship("AIWorkflowExecution", back_populates="ticket")
     ai_approvals   = relationship("AIApproval", back_populates="ticket")
     ai_suggestions = relationship("AITicketSuggestion", back_populates="ticket")
@@ -389,7 +396,7 @@ class Comment(Base):
     __tablename__ = "comments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=False)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     body = Column(Text, nullable=False)
     is_public = Column(Boolean, default=True)
@@ -407,7 +414,7 @@ class TicketApproval(Base):
     __tablename__ = "ticket_approvals"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=False)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     action = Column(String(20), nullable=False)
     comment = Column(Text, nullable=True)

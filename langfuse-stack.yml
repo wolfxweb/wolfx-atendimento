@@ -1,0 +1,73 @@
+# Langfuse Self-Hosted — Docker Swarm Stack
+# Compatível com Docker Swarm (sem depends_on shorthand)
+
+version: "3.8"
+
+x-common-env: &common-env
+  SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-langfuse-dev-secret}
+  SERVER_PORT: "3000"
+  DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD:-langfuse123}@postgres:5432/langfuse
+  AUTH_DISABLED: "true"
+  TELEMETRY_ENABLED: "false"
+  NEXTAUTH_SECRET: ${LANGFUSE_SECRET_KEY:-sk-langfuse-dev-secret}
+  NEXTAUTH_URL: http://localhost:3000
+  UPGRADE_PASSWORD: ""
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse123}
+    volumes:
+      - langfuse-db:/var/lib/postgresql/data
+    networks:
+      - server
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    environment:
+      <<: *common-env
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-langfuse-dev-secret}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-langfuse-dev-key}
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD:-langfuse123}@postgres:5432/langfuse
+    networks:
+      - server
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 512M
+      endpoint_mode: dnsrr
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.langfuse.rule=Host(`langfuse.celx.com.br`)"
+        - "traefik.http.routers.langfuse.entrypoints=websecure"
+        - "traefik.http.routers.langfuse.tls.certResolver=letsencrypt"
+        - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  langfuse-db:
+    driver: local
+
+networks:
+  server:
+    external: true

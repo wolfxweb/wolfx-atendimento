@@ -1,262 +1,390 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import Layout from '../../components/Layout';
-import Modal from '../../components/Modal';
-import { getAIApprovals, approveAIApproval, rejectAIApproval } from '../../api/client';
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import api from "../../api/client";
 
 interface AIApproval {
   id: string;
-  title: string;
-  description?: string;
-  status: 'pending' | 'approved' | 'rejected';
-  requested_by?: string;
-  requested_at: string;
-  reviewed_by?: string;
-  reviewed_at?: string;
-  comment?: string;
-  review_comment?: string;
-  metadata?: Record<string, any>;
+  ticket_id: string;
+  execution_id: string;
+  approval_type: string;
+  step_description: string;
+  ai_suggestion: Record<string, any>;
+  confidence: number | null;
+  ticket_priority: string | null;
+  ticket_category: string | null;
+  dry_run: boolean;
+  auto_skipped: boolean;
+  human_decision: string | null;
+  human_notes: string | null;
+  approver_user_id: string | null;
+  approved_at: string | null;
+  created_at: string;
+  expires_at: string | null;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendente',
-  approved: 'Aprovado',
-  rejected: 'Rejeitado',
-};
+type FilterStatus = "all" | "pending" | "approved" | "rejected";
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
-};
+async function fetchApprovals(status: FilterStatus): Promise<AIApproval[]> {
+  const params = status !== "all" ? `?status=${status}` : "";
+  const res = await api.get(`/ai/approvals${params}`);
+  return res.data;
+}
 
-export default function AdminAIApprovals() {
-  const queryClient = useQueryClient();
-  const [filterStatus, setFilterStatus] = useState('');
-  const [selectedApproval, setSelectedApproval] = useState<AIApproval | null>(null);
-  const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
-  const [comment, setComment] = useState('');
+async function decideApproval(id: string, decision: string, notes: string) {
+  const res = await api.patch(`/ai/approvals/${id}/decision`, { decision, notes });
+  return res.data;
+}
 
-  const { data: approvals = [], isLoading } = useQuery({
-    queryKey: ['ai-approvals', filterStatus],
-    queryFn: () => getAIApprovals({ status: filterStatus || undefined }).then(r => r.data as AIApproval[]),
-  });
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m atrás`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h atrás`;
+  return `${Math.floor(hrs / 24)}d atrás`;
+}
 
-  const approveMutation = useMutation({
-    mutationFn: ({ id, comment }: { id: string; comment?: string }) => approveAIApproval(id, comment),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-approvals'] });
-      handleCloseModal();
-    },
-  });
+function ConfidenceBadge({ value }: { value: number | null }) {
+  if (value === null) return <span className="badge">—</span>;
+  const pct = Math.round(value * 100);
+  const color = pct >= 80 ? "#22c55e" : pct >= 60 ? "#eab308" : "#ef4444";
+  return (
+    <span style={{ color, fontWeight: 600, fontFamily: "monospace" }}>
+      {pct}%
+    </span>
+  );
+}
 
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, comment }: { id: string; comment: string }) => rejectAIApproval(id, comment),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-approvals'] });
-      handleCloseModal();
-    },
-  });
-
-  const handleOpenModal = (approval: AIApproval, action: 'approve' | 'reject') => {
-    setSelectedApproval(approval);
-    setActionType(action);
-    setComment('');
-  };
-
-  const handleCloseModal = () => {
-    setSelectedApproval(null);
-    setActionType(null);
-    setComment('');
-  };
-
-  const handleSubmit = () => {
-    if (!selectedApproval || !actionType) return;
-
-    if (actionType === 'approve') {
-      approveMutation.mutate({ id: selectedApproval.id, comment: comment || undefined });
-    } else {
-      if (!comment.trim()) {
-        alert('Por favor, forneça um motivo para a rejeição.');
-        return;
-      }
-      rejectMutation.mutate({ id: selectedApproval.id, comment });
-    }
-  };
-
-  const formatDate = (d: string) => {
-    const date = new Date(d);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const pendingCount = approvals.filter(a => a.status === 'pending').length;
-  const approvedCount = approvals.filter(a => a.status === 'approved').length;
-  const rejectedCount = approvals.filter(a => a.status === 'rejected').length;
+function SuggestionCard({ approval }: { approval: AIApproval }) {
+  const sug = approval.ai_suggestion || {};
+  const classification = sug.classification || {};
+  const suggestion = sug.suggestion_response;
 
   return (
-    <Layout>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Aprovações de IA</h2>
-        <div className="flex items-center gap-4">
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    <div style={{ marginTop: 12, padding: 12, background: "#f9fafb", borderRadius: 8 }}>
+      {approval.approval_type === "escalation" && (
+        <div>
+          <strong style={{ fontSize: 13, color: "#374151" }}>Escalação AI</strong>
+          <div style={{ fontSize: 13, marginTop: 6, color: "#4b5563" }}>
+            {approval.step_description}
+          </div>
+        </div>
+      )}
+      {classification.category && (
+        <div style={{ fontSize: 13, marginTop: 8 }}>
+          <span style={{ color: "#6b7280" }}>Categoria: </span>
+          <strong>{classification.category}</strong>
+          {classification.intent && (
+            <>
+              {" · "}<span style={{ color: "#6b7280" }}>Intenção: </span>
+              {classification.intent}
+            </>
+          )}
+        </div>
+      )}
+      {sug.assign_to && (
+        <div style={{ fontSize: 13, marginTop: 4, color: "#7c3aed" }}>
+          🏢 Equipa: {sug.assign_to}
+        </div>
+      )}
+      {sug.priority_override && (
+        <div style={{ fontSize: 13, marginTop: 4, color: "#b45309" }}>
+          ⚡ Prioridade override: {sug.priority_override}
+        </div>
+      )}
+      {sug.escalation_reason && (
+        <div style={{ fontSize: 13, marginTop: 6, fontStyle: "italic", color: "#9ca3af" }}>
+          "{sug.escalation_reason}"
+        </div>
+      )}
+      {suggestion && (
+        <div style={{ marginTop: 10, padding: 10, background: "#fff", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>
+            💡 Resposta sugerida:
+          </div>
+          <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{suggestion}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalCard({ approval, onDecide }: { approval: AIApproval; onDecide: (id: string, decision: string) => void }) {
+  const [notes, setNotes] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const decided = approval.human_decision !== null;
+
+  const handleConfirm = (decision: string) => {
+    onDecide(approval.id, decision);
+    setConfirming(null);
+  };
+
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        padding: 16,
+        background: decided
+          ? approval.human_decision === "approved"
+            ? "#f0fdf4"
+            : "#fef2f2"
+          : "#fff",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>🎫 {approval.ticket_id.slice(0, 8)}</span>
+            <span
+              style={{
+                background: "#dbeafe",
+                color: "#1d4ed8",
+                padding: "2px 8px",
+                borderRadius: 12,
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              {approval.approval_type}
+            </span>
+            {approval.ticket_priority && (
+              <span
+                style={{
+                  background: "#fef3c7",
+                  color: "#92400e",
+                  padding: "2px 8px",
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              >
+                {approval.ticket_priority}
+              </span>
+            )}
+            {approval.ticket_category && (
+              <span style={{ fontSize: 12, color: "#6b7280" }}>{approval.ticket_category}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>
+            {timeAgo(approval.created_at)} · Confiança: <ConfidenceBadge value={approval.confidence} />
+            {approval.dry_run && (
+              <span style={{ marginLeft: 8, fontSize: 11, color: "#f59e0b" }}>🔒 dry_run</span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {decided ? (
+            <span
+              style={{
+                padding: "4px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                background: approval.human_decision === "approved" ? "#22c55e" : "#ef4444",
+                color: "#fff",
+              }}
+            >
+              {approval.human_decision === "approved" ? "✅ Aprovado" : "❌ Rejeitado"}
+            </span>
+          ) : (
+            <span
+              style={{
+                padding: "4px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                background: "#fef3c7",
+                color: "#92400e",
+              }}
+            >
+              ⏳ Pendente
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div
+        style={{ fontSize: 13, color: "#374151", marginTop: 10 }}
+      >
+        {approval.step_description}
+      </div>
+
+      {expanded && <SuggestionCard approval={approval} />}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#3b82f6",
+            cursor: "pointer",
+            fontSize: 13,
+            padding: "4px 0",
+          }}
+        >
+          {expanded ? "▲ Ocultar detalhes" : "▼ Ver detalhes AI"}
+        </button>
+
+        {!decided && (
+          <div style={{ display: "flex", gap: 8 }}>
+            {confirming === "approved" ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Notas (opcional)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 6,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    width: 180,
+                  }}
+                />
+                <button
+                  onClick={() => handleConfirm("approved")}
+                  style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}
+                >
+                  Confirmar ✓
+                </button>
+                <button
+                  onClick={() => setConfirming(null)}
+                  style={{ background: "#e5e7eb", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : confirming === "rejected" ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Motivo da rejeição"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 6,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    width: 180,
+                  }}
+                />
+                <button
+                  onClick={() => handleConfirm("rejected")}
+                  style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}
+                >
+                  Confirmar ✕
+                </button>
+                <button
+                  onClick={() => setConfirming(null)}
+                  style={{ background: "#e5e7eb", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setConfirming("rejected")}
+                  style={{ background: "#fef2f2", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}
+                >
+                  Rejeitar
+                </button>
+                <button
+                  onClick={() => setConfirming("approved")}
+                  style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}
+                >
+                  Aprovar
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function AIApprovals() {
+  const [filter, setFilter] = useState<FilterStatus>("pending");
+  const queryClient = useQueryClient();
+
+  const { data: approvals = [], isLoading, error } = useQuery({
+    queryKey: ["ai-approvals", filter],
+    queryFn: () => fetchApprovals(filter),
+    refetchInterval: 30000,
+  });
+
+  const decideMutation = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: string }) =>
+      decideApproval(id, decision, ""),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai-approvals"] });
+    },
+  });
+
+  const handleDecide = (id: string, decision: string) => {
+    decideMutation.mutate({ id, decision });
+  };
+
+  const counts = {
+    all: approvals.length,
+    pending: approvals.filter((a) => a.human_decision === null).length,
+    approved: approvals.filter((a) => a.human_decision === "approved").length,
+    rejected: approvals.filter((a) => a.human_decision === "rejected").length,
+  };
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>🤖 Aprovações AI</h1>
+        <p style={{ color: "#6b7280", margin: "4px 0 0", fontSize: 14 }}>
+          Revisar e aprovar/decidir sobre as escalações automáticas geradas pelo agente AI.
+        </p>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {(["pending", "approved", "rejected", "all"] as FilterStatus[]).map((s) => (
+          <button
+            key={s}
+            onClick={() => setFilter(s)}
+            style={{
+              padding: "6px 16px",
+              borderRadius: 8,
+              border: filter === s ? "2px solid #3b82f6" : "1px solid #d1d5db",
+              background: filter === s ? "#eff6ff" : "#fff",
+              color: filter === s ? "#1d4ed8" : "#374151",
+              cursor: "pointer",
+              fontWeight: filter === s ? 600 : 400,
+              fontSize: 13,
+            }}
           >
-            <option value="">Todos os statuses</option>
-            <option value="pending">Pendente</option>
-            <option value="approved">Aprovado</option>
-            <option value="rejected">Rejeitado</option>
-          </select>
-        </div>
+            {s === "pending" ? "⏳ Pendentes" : s === "approved" ? "✅ Aprovadas" : s === "rejected" ? "❌ Rejeitadas" : "📋 Todas"}
+          </button>
+        ))}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
-          <p className="text-sm font-medium text-yellow-700">Pendentes</p>
-          <p className="text-2xl font-bold text-yellow-800 mt-1">{pendingCount}</p>
+      {isLoading && <div style={{ color: "#9ca3af", textAlign: "center", padding: 40 }}>A carregar…</div>}
+      {error && (
+        <div style={{ color: "#ef4444", background: "#fef2f2", padding: 12, borderRadius: 8, fontSize: 14 }}>
+          Erro ao carregar aprovações
         </div>
-        <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-          <p className="text-sm font-medium text-green-700">Aprovados</p>
-          <p className="text-2xl font-bold text-green-800 mt-1">{approvedCount}</p>
-        </div>
-        <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-          <p className="text-sm font-medium text-red-700">Rejeitados</p>
-          <p className="text-2xl font-bold text-red-800 mt-1">{rejectedCount}</p>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Carregando...</div>
-      ) : !approvals.length ? (
-        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-          <p className="text-gray-500">Nenhuma aprovação encontrada.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Título</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Solicitante</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Data</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {approvals.map((approval) => (
-                <tr key={approval.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-gray-800">{approval.title}</div>
-                    {approval.description && (
-                      <div className="text-sm text-gray-500 mt-1 truncate max-w-xs">
-                        {approval.description}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {approval.requested_by || '—'}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 text-sm">
-                    {formatDate(approval.requested_at)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${STATUS_COLORS[approval.status]}`}>
-                      {STATUS_LABELS[approval.status]}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {approval.status === 'pending' ? (
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => handleOpenModal(approval, 'approve')}
-                          className="text-xs text-green-600 hover:underline font-medium"
-                        >
-                          Aprovar
-                        </button>
-                        <button
-                          onClick={() => handleOpenModal(approval, 'reject')}
-                          className="text-xs text-red-600 hover:underline font-medium"
-                        >
-                          Rejeitar
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">
-                        {approval.reviewed_by ? `Por ${approval.reviewed_by}` : '—'}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      )}
+      {!isLoading && approvals.length === 0 && (
+        <div style={{ textAlign: "center", padding: 60, color: "#9ca3af", fontSize: 15 }}>
+          Nenhuma aprovação {filter !== "all" ? filter : ""} encontrada.
         </div>
       )}
 
-      {/* Approve/Reject Modal */}
-      <Modal
-        isOpen={!!selectedApproval && !!actionType}
-        onClose={handleCloseModal}
-        title={actionType === 'approve' ? 'Aprovar Solicitação' : 'Rejeitar Solicitação'}
-        size="md"
-      >
-        {selectedApproval && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800">{selectedApproval.title}</h4>
-              {selectedApproval.description && (
-                <p className="text-sm text-gray-600 mt-1">{selectedApproval.description}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {actionType === 'approve' ? 'Comentário (opcional)' : 'Motivo da rejeição'}
-              </label>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder={actionType === 'approve' ? 'Adicione um comentário...' : 'Descreva o motivo da rejeição...'}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={handleCloseModal}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={approveMutation.isPending || rejectMutation.isPending}
-                className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
-                  actionType === 'approve'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                } disabled:opacity-50`}
-              >
-                {approveMutation.isPending || rejectMutation.isPending
-                  ? 'Processando...'
-                  : actionType === 'approve'
-                  ? 'Confirmar Aprovação'
-                  : 'Confirmar Rejeição'}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </Layout>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {approvals.map((approval) => (
+          <ApprovalCard key={approval.id} approval={approval} onDecide={handleDecide} />
+        ))}
+      </div>
+    </div>
   );
 }

@@ -1,20 +1,14 @@
 """
-Embedding service using LangChain-compatible custom embeddings for MiniMax.
+Embedding service using OpenRouter for RAG semantic search.
 
-Reference: AI_MODULE_PLAN.md section 4.5
-Model: minimaxi/e5-embedding-02 (dim=1024)
-
-MiniMax e5-embedding-02 uses a non-standard OpenAI-compatible API:
-  - Field: "texts" (array) instead of "input" (string)
-  - Field: "type" required ("query" or "db")
-
-We implement a LangChain-compatible Embeddings class that handles the correct
-request/response format, so the rest of the pipeline stays provider-agnostic.
+Model: openai/text-embedding-3-small (dim=1536)
+OpenRouter provides unified API with rate limit handling.
 """
 
 import os
 import logging
 import time
+import math
 from typing import Optional
 
 import httpx
@@ -23,22 +17,19 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "minimaxi/e5-embedding-02")
-EMBEDDING_DIM = 1024   # MiniMax e5-embedding-02 → 1024 dimensions
-EMBEDDING_API_BASE = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
+EMBEDDING_DIM = 1536   # text-embedding-3-small → 1536 dimensions
+EMBEDDING_API_BASE = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
 CHUNK_SIZE = 500       # characters per chunk
 CHUNK_OVERLAP = 50     # overlap between chunks
 MAX_RETRIES = 5        # total retry attempts per batch
 INITIAL_BACKOFF = 5    # seconds
 
 
-# ── MiniMax Embeddings (LangChain-compatible) ─────────────────────────────────
-class MiniMaxEmbeddings:
+# ── OpenRouter Embeddings (OpenAI-compatible) ─────────────────────────────────
+class OpenRouterEmbeddings:
     """
-    LangChain-compatible embeddings class for MiniMax e5-embedding-02.
-
-    Implements embed_query / embed_documents so it can replace
-    langchain_openai.OpenAIEmbeddings in the pipeline.
+    OpenAI-compatible embeddings class via OpenRouter.
     Uses synchronous HTTP calls with retry + exponential backoff for rate limits.
     """
 
@@ -58,17 +49,18 @@ class MiniMaxEmbeddings:
         if self._session:
             self._session.close()
 
-    def _post(self, texts: list[str], embedding_type: str) -> list[list[float]]:
-        """Make a MiniMax embedding API call with retry on rate limit / 5xx / network errors."""
+    def _post(self, texts: list[str]) -> list[list[float]]:
+        """Make OpenRouter embedding API call with retry on rate limit / 5xx / network errors."""
         url = f"{self.api_base}/embeddings"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://atendimento.wolfx.com.br",
+            "X-Title": "WolfX Atendimento",
         }
         payload = {
             "model": self.model,
-            "texts": texts,
-            "type": embedding_type,
+            "input": texts,
         }
         last_exc = None
         for attempt in range(MAX_RETRIES):
@@ -76,10 +68,19 @@ class MiniMaxEmbeddings:
                 resp = self._client().post(url, headers=headers, json=payload)
 
                 # HTTP-level rate limit or unavailable
-                if resp.status_code in (429, 503):
+                if resp.status_code == 429:
                     backoff = INITIAL_BACKOFF * (2 ** attempt)
                     logger.warning(
-                        f"[RAG] MiniMax HTTP {resp.status_code}, backing off {backoff}s "
+                        f"[RAG] OpenRouter HTTP 429, backing off {backoff}s "
+                        f"(attempt {attempt+1}/{MAX_RETRIES})"
+                    )
+                    time.sleep(backoff)
+                    continue
+
+                if resp.status_code in (500, 502, 503):
+                    backoff = INITIAL_BACKOFF * (2 ** attempt)
+                    logger.warning(
+                        f"[RAG] OpenRouter HTTP {resp.status_code}, backing off {backoff}s "
                         f"(attempt {attempt+1}/{MAX_RETRIES})"
                     )
                     time.sleep(backoff)
@@ -88,34 +89,18 @@ class MiniMaxEmbeddings:
                 resp.raise_for_status()
                 data = resp.json()
 
-                # API-level status codes (MiniMax uses base_resp.status_code)
-                base_resp = data.get("base_resp", {})
-                status_code = base_resp.get("status_code", 0)
-                if status_code in (1002, 1004, 1010):
-                    backoff = INITIAL_BACKOFF * (2 ** attempt)
-                    detail = base_resp.get("status_msg", "")
-                    logger.warning(
-                        f"[RAG] MiniMax API status={status_code} ({detail}), "
-                        f"backing off {backoff}s (attempt {attempt+1}/{MAX_RETRIES})"
-                    )
-                    time.sleep(backoff)
-                    continue
-                if status_code != 0:
-                    raise RuntimeError(
-                        f"MiniMax API error {status_code}: {base_resp.get('status_msg', '')}"
-                    )
-
-                vectors = data.get("vectors", [])
-                if not vectors:
-                    raise ValueError(f"MiniMax returned no vectors: {data}")
-                return [v["embedding"] for v in vectors]
+                # OpenAI-compatible response
+                embeddings = [item["embedding"] for item in data["data"]]
+                if not embeddings:
+                    raise ValueError(f"OpenRouter returned no embeddings: {data}")
+                return embeddings
 
             except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout,
                     httpx.RemoteProtocolError, httpx.PoolTimeout,
                     httpx.ConnectTimeout) as exc:
                 backoff = INITIAL_BACKOFF * (2 ** attempt)
                 logger.warning(
-                    f"[RAG] MiniMax connection error ({type(exc).__name__}), "
+                    f"[RAG] OpenRouter connection error ({type(exc).__name__}), "
                     f"backing off {backoff}s (attempt {attempt+1}/{MAX_RETRIES})"
                 )
                 time.sleep(backoff)
@@ -123,37 +108,38 @@ class MiniMaxEmbeddings:
                 continue
 
         raise RuntimeError(
-            f"MiniMax embedding failed after {MAX_RETRIES} retries: "
+            f"OpenRouter embedding failed after {MAX_RETRIES} retries: "
             f"{type(last_exc).__name__ if last_exc else 'HTTP error'}"
         )
 
     def embed_query(self, text: str) -> list[float]:
-        """Embed a single query string (type=query for semantic search)."""
-        return self._post([text[:8192]], "query")[0]
+        """Embed a single query string."""
+        return self._post([text[:8192]])[0]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of documents (type=db for indexing). MiniMax batch limit = 16."""
+        """Embed a batch of documents. OpenRouter batch limit = 100 for OpenAI compatibility."""
         results = []
-        for i in range(0, len(texts), 16):
+        for i in range(0, len(texts), 16):  # Use smaller batches for reliability
             batch = [t[:8192] for t in texts[i:i + 16]]
-            results.extend(self._post(batch, "db"))
+            results.extend(self._post(batch))
         return results
+
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 def _get_api_key() -> str:
-    key = os.getenv("MINIMAX_API_KEY") or os.getenv("MINIMAX_API_TOKEN")
+    key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_TOKEN")
     if not key:
-        raise ValueError("MINIMAX_API_KEY environment variable is not set")
+        raise ValueError("OPENROUTER_API_KEY environment variable is not set")
     return key
 
 
-_instance: Optional[MiniMaxEmbeddings] = None
+_instance: Optional[OpenRouterEmbeddings] = None
 
-def get_embeddings() -> MiniMaxEmbeddings:
+def get_embeddings() -> OpenRouterEmbeddings:
     """Cached singleton — reuses HTTP session across calls."""
     global _instance
     if _instance is None:
-        _instance = MiniMaxEmbeddings(api_key=_get_api_key())
+        _instance = OpenRouterEmbeddings(api_key=_get_api_key())
     return _instance
 
 
@@ -210,7 +196,7 @@ def index_article(db: Session, article_id: str) -> dict:
       2. Delete existing ai_embeddings for this article (re-index = full replace)
       3. Extract & chunk body text
       4. For each PDF attachment: extract text & chunk
-      5. Generate embeddings via MiniMax e5-embedding-02
+      5. Generate embeddings via OpenRouter
       6. Store in ai_embeddings table
     """
     from app.models.models import AIEmbedding, KBArticle
@@ -286,7 +272,7 @@ def index_rag_document(db: Session, rag_document_id: str) -> dict:
       1. Load AIRagDocument
       2. Delete existing ai_rag_chunks for this document (re-index = full replace)
       3. Extract & chunk PDF text
-      4. Generate embeddings via MiniMax e5-embedding-02
+      4. Generate embeddings via OpenRouter
       5. Store in ai_rag_chunks table
       6. Update AIRagDocument status
     """
@@ -362,7 +348,7 @@ def search_similar_chunks(
 ) -> list[dict]:
     """
     RAG semantic search:
-      1. Embed query via MiniMax (type=query)
+      1. Embed query via OpenRouter
       2. Fetch candidate chunks (optionally filtered by article_ids or rag_document_ids)
       3. Compute cosine similarity in Python
       4. Return top_k results above threshold

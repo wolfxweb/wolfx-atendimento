@@ -47,9 +47,10 @@ interface AIMetrics {
 }
 
 export default function AIMetrics() {
+  console.log('[DEBUG] AIMetrics rendered');
   const { data, isLoading } = useQuery({
     queryKey: ['ai-metrics'],
-    queryFn: () => api.get<AIMetrics>('/ai/metrics').then(r => r.data),
+    queryFn: () => api.get<AIMetrics>('/ai/dashboard').then(r => r.data),
   });
 
   if (isLoading) {

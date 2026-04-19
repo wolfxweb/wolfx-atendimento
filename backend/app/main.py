@@ -25,6 +25,7 @@ from app.models.models import (
     User, Customer, Category, Product, Ticket,
     Comment, TicketApproval, SLA, Agent
 )
+from app.models import ai_models  # noqa: F401 — ensures Base.metadata includes all AI models
 from app.core.security import get_password_hash, create_access_token
 from app.schemas.schemas import Token
 
@@ -197,6 +198,8 @@ def seed_menu(db: Session):
         {"title": "Métricas IA", "href": "/admin/ai/metricas", "icon": "metrics", "order": 13},
         {"title": "Regras IA", "href": "/admin/ai/regras", "icon": "rules", "order": 14},
         {"title": "RAG - Base de Conhecimento", "href": "/admin/ai/kb-rag", "icon": "rag", "order": 15},
+        {"title": "Agente AI", "href": "/admin/ai/agente", "icon": "agent", "order": 16},
+        {"title": "Ferramentas AI", "href": "/admin/ai/ferramentas", "icon": "tool", "order": 17},
     ]
     for item_data in ai_children:
         item_data["category"] = "AI"
@@ -243,8 +246,27 @@ def _start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
     _scheduler.add_job(_process_pending_rag_documents, "interval", minutes=5)
+    _scheduler.add_job(_process_pending_tickets_ai, "interval", minutes=5)
     _scheduler.start()
-    print("[RAG Scheduler] Started — running every 5 minutes")
+    print("[Scheduler] Started — RAG every 5min, AI workflow every 5min")
+
+    # Also start the new LangGraph scheduler
+    try:
+        from app.ai.scheduler.scheduler_service import start_scheduler as start_langgraph_scheduler
+        start_langgraph_scheduler()
+        print("[Scheduler] LangGraph AI scheduler started")
+    except Exception as e:
+        print(f"[Scheduler] Could not start LangGraph scheduler: {e}")
+
+
+def _process_pending_tickets_ai():
+    """Job that runs every 5 minutes to process new tickets with AI workflow."""
+    from app.api.routes.ai_workflow import run_pending_workflows
+    try:
+        result = run_pending_workflows()
+        print(f"[AI Workflow Scheduler] {result}")
+    except Exception as e:
+        print(f"[AI Workflow Scheduler] Error: {e}")
 
 def _stop_scheduler():
     global _scheduler
@@ -252,6 +274,13 @@ def _stop_scheduler():
         _scheduler.shutdown(wait=False)
         _scheduler = None
         print("[RAG Scheduler] Stopped")
+
+    # Also stop the new LangGraph scheduler
+    try:
+        from app.ai.scheduler.scheduler_service import stop_scheduler as stop_langgraph_scheduler
+        stop_langgraph_scheduler()
+    except Exception:
+        pass
 
 
 # =====================
@@ -308,8 +337,12 @@ from app.api.routes import kb
 from app.api.routes.ticket_collaborators import router as ticket_collaborators_router
 from app.api.routes.ticket_products import router as ticket_products_router
 from app.api.routes.ticket_relations import router as ticket_relations_router
-from app.api.routes import ai_approvals, ai_executions, ai_metrics, ai_rules, ai_feedback, ai_suggestions
+from app.api.routes import (ai_approvals, ai_executions, ai_metrics, ai_rules, ai_feedback,
+                             ai_suggestions, ai_config, ai_workflow)
 from app.api.routes.ai_kb_rag import router as ai_kb_rag_router
+from app.api.routes.ai_models import router as ai_models_router
+from app.api.routes.ai_prompt_templates import router as ai_prompt_templates_router
+from app.api.routes.ai_tools import router as ai_tools_router
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_PREFIX, tags=["customers"])
@@ -337,6 +370,11 @@ app.include_router(ai_rules.router, prefix=settings.API_V1_PREFIX, tags=["AI Rul
 app.include_router(ai_feedback.router, prefix=settings.API_V1_PREFIX, tags=["AI Feedback"])
 app.include_router(ai_suggestions.router, prefix=settings.API_V1_PREFIX, tags=["AI Suggestions"])
 app.include_router(ai_kb_rag_router, prefix=settings.API_V1_PREFIX, tags=["AI KB RAG"])
+app.include_router(ai_models_router, prefix=settings.API_V1_PREFIX, tags=["AI Models"])
+app.include_router(ai_prompt_templates_router, prefix=settings.API_V1_PREFIX, tags=["AI Prompt Templates"])
+app.include_router(ai_tools_router, prefix=settings.API_V1_PREFIX, tags=["AI Tools"])
+app.include_router(ai_config.router, prefix=settings.API_V1_PREFIX, tags=["AI Config"])
+app.include_router(ai_workflow.router, prefix=settings.API_V1_PREFIX, tags=["AI Workflow"])
 
 
 @app.get("/")

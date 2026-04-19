@@ -51,6 +51,7 @@ export default function AdminTickets() {
   const [filterStatus, setFilterStatus] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ticketToDelete, setTicketToDelete] = useState<Ticket | null>(null);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
   const { data: tickets = [], isLoading } = useQuery({
     queryKey: ['tickets'],
@@ -117,7 +118,11 @@ export default function AdminTickets() {
   };
 
   const handleBulkDelete = () => {
-    if (!confirm(`Eliminar ${selected.size} ticket(s) selecionado(s)?`)) return;
+    setShowBulkDeleteModal(true);
+  };
+
+  const confirmBulkDelete = () => {
+    setShowBulkDeleteModal(false);
     bulkDeleteMutation.mutate(Array.from(selected));
   };
 
@@ -296,6 +301,39 @@ export default function AdminTickets() {
                 className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'A eliminar...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Bulk Delete Confirm Modal */}
+      {showBulkDeleteModal && (
+        <Modal isOpen={true} onClose={() => setShowBulkDeleteModal(false)} title="Confirmar Eliminação em Massa" size="sm">
+          <div className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Tem a certeza que deseja eliminar <strong>{selected.size}</strong> ticket(s) selecionado(s)? Esta ação não pode ser undone.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmBulkDelete}
+                disabled={bulkDeleteMutation.isPending}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkDeleteMutation.isPending ? 'A eliminar...' : `Eliminar ${selected.size} Ticket(s)`}
               </button>
             </div>
           </div>
