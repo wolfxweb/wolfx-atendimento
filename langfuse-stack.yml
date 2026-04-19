@@ -8,11 +8,13 @@ x-common-env: &common-env
   SALT: ${LANGFUSE_SALT:-langfuse-dev-salt-change-in-production}
   SERVER_PORT: "3000"
   DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD:-langfuse123}@postgres:5432/langfuse
-  AUTH_DISABLED: "true"
+  AUTH_DISABLED: "false"
   TELEMETRY_ENABLED: "false"
   NEXTAUTH_SECRET: ${LANGFUSE_SECRET_KEY:-sk-langfuse-dev-secret}
-  NEXTAUTH_URL: http://localhost:3000
+  NEXTAUTH_URL: https://langfuse.celx.com.br
   UPGRADE_PASSWORD: ""
+  seedAdminEmail: "wolfxweb@gmail.com"
+  seedAdminPassword: "@Wolfx2020"
 
 services:
   postgres:
@@ -57,7 +59,7 @@ services:
         - "traefik.enable=true"
         - "traefik.http.routers.langfuse.rule=Host(`langfuse.celx.com.br`)"
         - "traefik.http.routers.langfuse.entrypoints=websecure"
-        - "traefik.http.routers.langfuse.tls.certResolver=letsencrypt"
+        - "traefik.http.routers.langfuse.tls.certResolver=letsencryptresolver"
         - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
 
 

@@ -1,17 +1,20 @@
 """
-Embedding service using OpenRouter for RAG semantic search.
+Embedding service using LangChain + OpenRouter for RAG semantic search.
 
+Uses langchain-openai OpenAIEmbeddings which is OpenAI-compatible with OpenRouter.
 Model: openai/text-embedding-3-small (dim=1536)
-OpenRouter provides unified API with rate limit handling.
+
+LangChain OpenAIEmbeddings handles:
+- OpenAI-compatible API calls to OpenRouter
+- Automatic retries and backoff
+- Batch embedding with pagination
 """
 
 import os
 import logging
-import time
 import math
 from typing import Optional
 
-import httpx
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -19,113 +22,14 @@ logger = logging.getLogger(__name__)
 # ── Config ────────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small")
 EMBEDDING_DIM = 1536   # text-embedding-3-small → 1536 dimensions
-EMBEDDING_API_BASE = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
+OPENROUTER_API_BASE = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
 CHUNK_SIZE = 500       # characters per chunk
 CHUNK_OVERLAP = 50     # overlap between chunks
-MAX_RETRIES = 5        # total retry attempts per batch
-INITIAL_BACKOFF = 5    # seconds
 
 
-# ── OpenRouter Embeddings (OpenAI-compatible) ─────────────────────────────────
-class OpenRouterEmbeddings:
-    """
-    OpenAI-compatible embeddings class via OpenRouter.
-    Uses synchronous HTTP calls with retry + exponential backoff for rate limits.
-    """
-
-    def __init__(self, api_key: str, model: str = EMBEDDING_MODEL,
-                 api_base: str = EMBEDDING_API_BASE):
-        self.api_key = api_key
-        self.model = model
-        self.api_base = api_base.rstrip("/")
-        self._session: Optional[httpx.Client] = None
-
-    def _client(self) -> httpx.Client:
-        if self._session is None:
-            self._session = httpx.Client(timeout=60.0)
-        return self._session
-
-    def __del__(self):
-        if self._session:
-            self._session.close()
-
-    def _post(self, texts: list[str]) -> list[list[float]]:
-        """Make OpenRouter embedding API call with retry on rate limit / 5xx / network errors."""
-        url = f"{self.api_base}/embeddings"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://atendimento.wolfx.com.br",
-            "X-Title": "WolfX Atendimento",
-        }
-        payload = {
-            "model": self.model,
-            "input": texts,
-        }
-        last_exc = None
-        for attempt in range(MAX_RETRIES):
-            try:
-                resp = self._client().post(url, headers=headers, json=payload)
-
-                # HTTP-level rate limit or unavailable
-                if resp.status_code == 429:
-                    backoff = INITIAL_BACKOFF * (2 ** attempt)
-                    logger.warning(
-                        f"[RAG] OpenRouter HTTP 429, backing off {backoff}s "
-                        f"(attempt {attempt+1}/{MAX_RETRIES})"
-                    )
-                    time.sleep(backoff)
-                    continue
-
-                if resp.status_code in (500, 502, 503):
-                    backoff = INITIAL_BACKOFF * (2 ** attempt)
-                    logger.warning(
-                        f"[RAG] OpenRouter HTTP {resp.status_code}, backing off {backoff}s "
-                        f"(attempt {attempt+1}/{MAX_RETRIES})"
-                    )
-                    time.sleep(backoff)
-                    continue
-
-                resp.raise_for_status()
-                data = resp.json()
-
-                # OpenAI-compatible response
-                embeddings = [item["embedding"] for item in data["data"]]
-                if not embeddings:
-                    raise ValueError(f"OpenRouter returned no embeddings: {data}")
-                return embeddings
-
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout,
-                    httpx.RemoteProtocolError, httpx.PoolTimeout,
-                    httpx.ConnectTimeout) as exc:
-                backoff = INITIAL_BACKOFF * (2 ** attempt)
-                logger.warning(
-                    f"[RAG] OpenRouter connection error ({type(exc).__name__}), "
-                    f"backing off {backoff}s (attempt {attempt+1}/{MAX_RETRIES})"
-                )
-                time.sleep(backoff)
-                last_exc = exc
-                continue
-
-        raise RuntimeError(
-            f"OpenRouter embedding failed after {MAX_RETRIES} retries: "
-            f"{type(last_exc).__name__ if last_exc else 'HTTP error'}"
-        )
-
-    def embed_query(self, text: str) -> list[float]:
-        """Embed a single query string."""
-        return self._post([text[:8192]])[0]
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of documents. OpenRouter batch limit = 100 for OpenAI compatibility."""
-        results = []
-        for i in range(0, len(texts), 16):  # Use smaller batches for reliability
-            batch = [t[:8192] for t in texts[i:i + 16]]
-            results.extend(self._post(batch))
-        return results
+# ── LangChain OpenAI Embeddings (OpenRouter-compatible) ───────────────────────
 
 
-# ── Singleton ─────────────────────────────────────────────────────────────────
 def _get_api_key() -> str:
     key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_TOKEN")
     if not key:
@@ -133,13 +37,57 @@ def _get_api_key() -> str:
     return key
 
 
-_instance: Optional[OpenRouterEmbeddings] = None
+class _OpenRouterEmbeddings:
+    """
+    LangChain OpenAIEmbeddings wrapper for OpenRouter.
 
-def get_embeddings() -> OpenRouterEmbeddings:
-    """Cached singleton — reuses HTTP session across calls."""
+    Uses langchain-openai OpenAIEmbeddings which handles:
+    - OpenAI-compatible API calls to OpenRouter /embeddings endpoint
+    - Automatic retries with exponential backoff
+    - Batch embedding with pagination
+    - Timeout management
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = EMBEDDING_MODEL,
+        api_base: str = OPENROUTER_API_BASE,
+    ):
+        from langchain_openai import OpenAIEmbeddings
+
+        self._embeddings = OpenAIEmbeddings(
+            model=model,
+            api_key=api_key,
+            base_url=f"{api_base}/v1",
+            timeout=60.0,
+            max_retries=5,
+            http_headers={
+                "HTTP-Referer": "https://atendimento.wolfx.com.br",
+                "X-Title": "WolfX Atendimento",
+            },
+        )
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a single query string."""
+        return self._embeddings.embed_query(text[:8192])
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of documents."""
+        # LangChain OpenAIEmbeddings handles batching internally
+        return self._embeddings.embed_documents([t[:8192] for t in texts])
+
+
+# ── Singleton ─────────────────────────────────────────────────────────────────
+
+_instance: Optional[_OpenRouterEmbeddings] = None
+
+
+def get_embeddings() -> _OpenRouterEmbeddings:
+    """Cached singleton."""
     global _instance
     if _instance is None:
-        _instance = OpenRouterEmbeddings(api_key=_get_api_key())
+        _instance = _OpenRouterEmbeddings(api_key=_get_api_key())
     return _instance
 
 

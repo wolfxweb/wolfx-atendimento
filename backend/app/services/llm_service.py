@@ -1,19 +1,18 @@
 """
-LLM Service — Chat completion via OpenRouter (OpenAI-compatible API).
+LLM Service — Chat completion via OpenRouter using LangChain ChatOpenAI.
 
-Usa o modelo configurado na tabela AIModel (is_default + is_active + type='llm').
-Se não houver modelo na BD, usa fallback via variável de ambiente.
+Usa ChatOpenAI (langchain-openai) que é OpenAI-compatible e funciona
+transparente com OpenRouter. O CallbackHandler do LangFuse é injectado
+automaticamente quando usado dentro de LCEL chains.
 
-Retry com backoff exponencial para rate limits e erros transitórios.
+Retry com backoff exponencial via ChatOpenAI + timeout custom.
 """
 
 import os
 import json
 import logging
-import time
 from typing import Optional, Any
 
-import httpx
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -26,12 +25,16 @@ OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENROUT
 MAX_RETRIES: int = 5
 INITIAL_BACKOFF: float = 3.0
 
-# ── OpenAI-compatible Chat Completion ─────────────────────────────────────────
+# ── LangChain ChatOpenAI ───────────────────────────────────────────────────────
+
 
 class LLMService:
     """
-    Chat completion service via OpenRouter (OpenAI-compatible).
-    Suporta modelos tipo 'llm' configurados na tabela AIModel.
+    Chat completion service via OpenRouter using LangChain ChatOpenAI.
+
+    Mantém a mesma interface que o anterior (chat_complete, complete) para
+    compatibilidade com o código existente. Internamente usa ChatOpenAI
+    com tracing LangFuse automático via callback handler.
     """
 
     def __init__(
@@ -43,16 +46,27 @@ class LLMService:
         self.api_key = api_key or OPENROUTER_API_KEY
         self.model = model or DEFAULT_MODEL
         self.api_base = (api_base or OPENROUTER_API_BASE).rstrip("/")
-        self._session: Optional[httpx.Client] = None
+        self._chat: Optional["ChatOpenAI"] = None
 
-    def _client(self) -> httpx.Client:
-        if self._session is None:
-            self._session = httpx.Client(timeout=120.0)
-        return self._session
+    @property
+    def chat(self) -> "ChatOpenAI":
+        """Lazy-load ChatOpenAI (langchain-openai)."""
+        if self._chat is None:
+            from langchain_openai import ChatOpenAI
 
-    def __del__(self):
-        if self._session:
-            self._session.close()
+            self._chat = ChatOpenAI(
+                model=self.model,
+                api_key=self.api_key,
+                base_url=f"{self.api_base}/v1",
+                timeout=120.0,
+                max_retries=MAX_RETRIES,
+                # OpenRouter specific headers
+                http_headers={
+                    "HTTP-Referer": "https://atendimento.wolfx.com.br",
+                    "X-Title": "WolfX Atendimento",
+                },
+            )
+        return self._chat
 
     def chat_complete(
         self,
@@ -60,99 +74,78 @@ class LLMService:
         model: Optional[str] = None,
         temperature: float = 0.3,
         max_tokens: int = 1024,
-        retry_count: int = MAX_RETRIES,
     ) -> dict:
         """
-        Faz chat completion via OpenRouter API.
+        Faz chat completion via ChatOpenAI (OpenRouter).
 
         Args:
             messages: [{"role": "system|user|assistant", "content": "..."}]
             model: override do modelo (usa default se None)
-            temperature: 0.0-1.0 (baixo = mais determinístico)
+            temperature: 0.0-1.0
             max_tokens: limite de tokens na resposta
-            retry_count: número de tentativas
 
         Returns:
             {"content": str, "usage": dict, "model": str, "finish_reason": str}
 
         Raises:
-            RuntimeError: após todos os retries falharem
+            RuntimeError: após retries falharem
         """
-        url = f"{self.api_base}/chat/completions"
-        model = model or self.model
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://atendimento.wolfx.com.br",
-            "X-Title": "WolfX Atendimento",
-        }
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
+        from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
-        last_exc: Exception | None = None
-        for attempt in range(retry_count):
-            try:
-                resp = self._client().post(url, headers=headers, json=payload)
+        # Map messages dict → LangChain messages
+        lc_messages = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role == "system":
+                lc_messages.append(SystemMessage(content=content))
+            elif role == "assistant":
+                lc_messages.append(AIMessage(content=content))
+            else:
+                lc_messages.append(HumanMessage(content=content))
 
-                if resp.status_code == 429:
-                    backoff = INITIAL_BACKOFF * (2 ** attempt)
-                    logger.warning(
-                        f"[LLM] OpenRouter HTTP 429, backing off {backoff}s "
-                        f"(attempt {attempt + 1}/{retry_count})"
-                    )
-                    time.sleep(backoff)
-                    continue
+        # Override model if needed (create new ChatOpenAI instance)
+        if model and model != self.model:
+            from langchain_openai import ChatOpenAI
 
-                if resp.status_code in (500, 502, 503, 504):
-                    backoff = INITIAL_BACKOFF * (2 ** attempt)
-                    logger.warning(
-                        f"[LLM] OpenRouter HTTP {resp.status_code}, backing off {backoff}s "
-                        f"(attempt {attempt + 1}/{retry_count})"
-                    )
-                    time.sleep(backoff)
-                    continue
+            chat = ChatOpenAI(
+                model=model,
+                api_key=self.api_key,
+                base_url=f"{self.api_base}/v1",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=120.0,
+                max_retries=MAX_RETRIES,
+                http_headers={
+                    "HTTP-Referer": "https://atendimento.wolfx.com.br",
+                    "X-Title": "WolfX Atendimento",
+                },
+            )
+        else:
+            chat = self.chat
 
-                if resp.status_code == 400:
-                    logger.error(f"[LLM] OpenRouter 400: {resp.text[:500]}")
-                resp.raise_for_status()
-                data = resp.json()
+        try:
+            response = chat.invoke(lc_messages)
 
-                choice = data["choices"][0]
-                finish_reason = choice.get("finish_reason", "stop")
-                content = choice.get("message", {}).get("content", "")
-
-                if not content:
-                    if finish_reason == "length":
-                        logger.warning("[LLM] Response truncated (max_tokens reached)")
-                        content = choice.get("message", {}).get("content", "")
-
-                return {
-                    "content": content,
-                    "usage": data.get("usage", {}),
-                    "model": data.get("model", model),
-                    "finish_reason": finish_reason,
+            # Extract usage from response metadata if available
+            usage = {}
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                usage = {
+                    "prompt_tokens": response.usage_metadata.get("input_tokens", 0),
+                    "completion_tokens": response.usage_metadata.get("output_tokens", 0),
+                    "total_tokens": response.usage_metadata.get("total_tokens", 0),
                 }
 
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout,
-                    httpx.RemoteProtocolError, httpx.PoolTimeout,
-                    httpx.ConnectTimeout, httpx.HTTPStatusError) as exc:
-                backoff = INITIAL_BACKOFF * (2 ** attempt)
-                logger.warning(
-                    f"[LLM] Connection error ({type(exc).__name__}), "
-                    f"backing off {backoff}s (attempt {attempt + 1}/{retry_count})"
-                )
-                time.sleep(backoff)
-                last_exc = exc
-                continue
+            return {
+                "content": response.content if hasattr(response, "content") else str(response),
+                "usage": usage,
+                "model": model or self.model,
+                "finish_reason": "stop",
+            }
 
-        raise RuntimeError(
-            f"LLM chat completion failed after {retry_count} retries: "
-            f"{type(last_exc).__name__ if last_exc else 'unknown'}"
-        )
+        except Exception as exc:
+            logger.error(f"[LLM] ChatOpenAI invoke failed: {exc}")
+            raise RuntimeError(f"LLM chat completion failed: {exc}")
 
     def complete(
         self,
@@ -162,7 +155,7 @@ class LLMService:
         max_tokens: int = 1024,
     ) -> str:
         """
-        Helpers: prompt simples → texto.
+        Helper: prompt simples → texto.
 
         Args:
             prompt: texto do user
@@ -185,6 +178,7 @@ class LLMService:
 
 # ── Modelo activo da BD ───────────────────────────────────────────────────────
 
+
 def _get_model_config_from_db(db: Session) -> tuple[str, str, str]:
     """
     Lê o modelo LLM default activo da BD.
@@ -202,7 +196,6 @@ def _get_model_config_from_db(db: Session) -> tuple[str, str, str]:
         ).first()
 
         if not model:
-            # Qualquer modelo LLM activo
             model = db.query(AIModel).filter(
                 AIModel.type == "llm",
                 AIModel.is_active == True,
@@ -210,9 +203,9 @@ def _get_model_config_from_db(db: Session) -> tuple[str, str, str]:
 
         if model:
             return (
-                model.model_id,  # Use actual model_id (e.g. "openai/gpt-4o-mini"), NOT display name
+                model.model_id,
                 model.provider or "openrouter",
-                "",  # api_key_ref → vars de ambiente, não guardadas em claro
+                "",
             )
     except Exception as e:
         logger.warning(f"[LLM] Could not read model from DB: {e}")
@@ -239,7 +232,6 @@ def get_llm_service(db: Optional[Session] = None) -> LLMService:
         cache_key = f"{provider}:{model_name}"
 
     if cache_key and cache_key != _llm_cache_key:
-        # Need API key from env based on provider
         _, _, api_key = ("", "openrouter", OPENROUTER_API_KEY)
         if db:
             _, _, api_key = _get_model_config_from_db(db)
@@ -263,16 +255,18 @@ def get_llm_service(db: Optional[Session] = None) -> LLMService:
 
 # ── Parse helpers ─────────────────────────────────────────────────────────────
 
+
 def extract_json(text: str) -> dict | list | None:
     """
     Extrai JSON do texto retornado pelo LLM.
     Tenta find o primeiro bloco ```json ... ``` ou `` {...} ``.
     Fallback: texto directo.
     """
+    import re
+
     text = text.strip()
 
     # Bloco ```json
-    import re
     m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
     if m:
         try:

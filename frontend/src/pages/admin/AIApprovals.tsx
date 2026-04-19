@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Layout from "../../components/Layout";
 import api from "../../api/client";
 
 interface AIApproval {
@@ -339,6 +340,7 @@ export default function AIApprovals() {
   };
 
   return (
+    <Layout>
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>🤖 Aprovações AI</h1>
@@ -386,5 +388,6 @@ export default function AIApprovals() {
         ))}
       </div>
     </div>
+    </Layout>
   );
 }

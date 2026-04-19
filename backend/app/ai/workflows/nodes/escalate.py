@@ -1,88 +1,73 @@
 """
-Escalate Node — decide se deve escalar o ticket para um agente.
+Escalate Node — decisão de escalação via LCEL chain + LangFuse callback.
 
-Usa LLM para tomar a decisão de escalação com base nas regras de negócio.
+Usa o chain LangChain (PromptTemplate | ChatOpenAI | JsonOutputParser)
+com LangFuse CallbackHandler para tracing automático.
 """
-from typing import Any
+
+import logging
 from datetime import datetime
 from uuid import uuid4
-from app.ai.chains.escalation import get_escalation_prompt
-from app.services.llm_service import get_llm_service, extract_json
-from app.services.langfuse_client import trace_llm_call
+from typing import Any
+
 from app.database import SessionLocal
 from app.models.ai_models import AIAuditLog
+from app.services.langfuse_client import get_langfuse_callback
+from app.ai.chains.escalation import get_escalation_chain_with_handler
 
 
 def escalate_node(state: dict[str, Any]) -> dict[str, Any]:
     """
     Node de decisão de escalação.
 
-    Lê template 'escalation' da BD → prompt → LLM → parse JSON →
-    decide se escala. O LLM é apenas o motor — as regras são Python.
+    Returns:
+        dict com escalation_decision, escalation_needed, escalation_reason,
+        assign_to, priority_override, current_node
     """
     ticket_data = state.get("ticket_data", {})
     title = ticket_data.get("title", "")
     description = ticket_data.get("description", "")
-    category = state.get("category", "geral")
+    category = state.get("category", "general")
     priority = state.get("priority", "normal")
     sentiment = state.get("sentiment", "neutral")
-    sla_status = state.get("sla_status", {})
+    execution_id = state.get("execution_id")
 
-    prompt = get_escalation_prompt(
-        title, description, category, priority, sentiment
-    )
-
-    system_prompt = (
-        "Eres un assistente AI especializado em decisões de escalação de tickets. "
-        "Respondes APENAS com JSON válido, sem texto extra. "
-        '{"should_escalate": true|false, "escalation_reason": "motivo ou null", '
-        '"assign_to": "equipa ou null", "priority_override": "nova prioridade ou null"}'
-    )
+    chain_inputs = {
+        "title": title,
+        "description": description,
+        "category": category,
+        "priority": priority,
+        "sentiment": sentiment,
+    }
 
     db = SessionLocal()
     try:
-        llm = get_llm_service(db)
+        callback = get_langfuse_callback()
 
         t0 = datetime.utcnow()
-        response = llm.complete(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=0.1,
-            max_tokens=256,
-        )
+
+        if callback:
+            result = get_escalation_chain_with_handler().invoke(
+                chain_inputs,
+                config={"callbacks": [callback]},
+            )
+        else:
+            result = get_escalation_chain_with_handler().invoke(chain_inputs)
+
         latency_ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
 
-        parsed = extract_json(response)
+        # Normalize result to dict
+        if hasattr(result, "model_dump"):
+            result = result.model_dump()
+        elif not isinstance(result, dict):
+            result = dict(result)
 
-        if parsed and isinstance(parsed, dict):
-            decision = {
-                "should_escalate": bool(parsed.get("should_escalate", False)),
-                "escalation_reason": parsed.get("escalation_reason"),
-                "assign_to": parsed.get("assign_to"),
-                "priority_override": parsed.get("priority_override"),
-            }
-        else:
-            # Fallback: escala por prioridade alta
-            decision = {
-                "should_escalate": priority in ("high", "urgent"),
-                "escalation_reason": f"Fallback: prioridade {priority}" if priority in ("high", "urgent") else None,
-                "assign_to": None,
-                "priority_override": None,
-            }
-
-        # Trace LangFuse
-        execution_id = state.get("execution_id")
-        ticket_id = ticket_data.get("id") or state.get("ticket_id")
-        trace_llm_call(
-            operation="escalate",
-            model=llm.model,
-            input_text=prompt[:500],
-            output_text=response[:500],
-            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-            latency_ms=latency_ms,
-            execution_id=execution_id,
-            ticket_id=ticket_id,
-        )
+        decision = {
+            "should_escalate": bool(result.get("should_escalate", False)),
+            "escalation_reason": result.get("escalation_reason"),
+            "assign_to": result.get("assign_to"),
+            "priority_override": result.get("priority_override"),
+        }
 
         # Audit log
         if execution_id:
@@ -93,15 +78,26 @@ def escalate_node(state: dict[str, Any]) -> dict[str, Any]:
                     node_name="escalate",
                     action="node_exited",
                     actor="ai",
-                    details={"decision": decision},
+                    details={"decision": decision, "latency_ms": latency_ms},
                     latency_ms=latency_ms,
                 )
                 db.add(audit)
                 db.commit()
-            except Exception:
+            except Exception as e:
+                logger.warning(f"[escalate_node] audit log failed: {e}")
                 db.rollback()
 
+        return {
+            "escalation_decision": decision,
+            "escalation_needed": decision["should_escalate"],
+            "escalation_reason": decision.get("escalation_reason"),
+            "assign_to": decision.get("assign_to"),
+            "priority_override": decision.get("priority_override"),
+            "current_node": "escalate",
+        }
+
     except Exception as e:
+        logger.error(f"[escalate_node] failed: {e}")
         decision = {
             "should_escalate": priority in ("high", "urgent"),
             "escalation_reason": None,
@@ -109,13 +105,14 @@ def escalate_node(state: dict[str, Any]) -> dict[str, Any]:
             "priority_override": None,
             "error": str(e)[:100],
         }
+        return {
+            "escalation_decision": decision,
+            "escalation_needed": decision["should_escalate"],
+            "escalation_reason": None,
+            "assign_to": None,
+            "priority_override": None,
+            "current_node": "escalate",
+        }
+
     finally:
         db.close()
-
-    return {
-        "escalation_decision": decision,
-        "escalation_needed": decision["should_escalate"],
-        "escalation_reason": decision.get("escalation_reason"),
-        "assign_to": decision.get("assign_to"),
-        "current_node": "escalate",
-    }
