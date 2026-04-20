@@ -29,9 +29,9 @@ def check_approval_node(state: dict[str, Any]) -> dict[str, Any]:
         approval_reasons: list[str]
         approval_type: str  # "classify_confirm", "response_confirm", "escalate_confirm"
     """
-    classification = state.get("classification", {})
-    suggested_response = state.get("suggested_response", {})
-    sla_status = state.get("sla_status", {})
+    classification = state.get("classification") or {}
+    suggested_response = state.get("suggested_response") or {}
+    sla_status = state.get("sla_status") or {}
     dry_run = state.get("dry_run", True)
 
     reasons: list[str] = []

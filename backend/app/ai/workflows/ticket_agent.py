@@ -227,7 +227,8 @@ def run_ticket_workflow(
         return final_state
 
     except Exception as e:
-        logger.error(f"[ticket_agent] Workflow error: {e}")
+        import traceback
+        logger.error(f"[ticket_agent] Workflow error: {e}\n{traceback.format_exc()}")
         flush()
         return {
             **initial_state,

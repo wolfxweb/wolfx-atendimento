@@ -108,7 +108,7 @@ def classify_node(state: dict[str, Any]) -> dict[str, Any]:
                 db.rollback()
 
         return {
-            "classification_output": classification_output,
+            "classification": classification_output,
             "priority": classification_output.get("priority", "normal"),
             "category": classification_output.get("category", "general"),
             "intent": classification_output.get("intent", "question"),
@@ -124,7 +124,7 @@ def classify_node(state: dict[str, Any]) -> dict[str, Any]:
 
         # Fallback em caso de erro
         return {
-            "classification_output": {
+            "classification": {
                 "priority": "normal",
                 "category": "general",
                 "intent": "question",

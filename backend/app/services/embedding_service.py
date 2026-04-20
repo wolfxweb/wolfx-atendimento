@@ -59,10 +59,10 @@ class _OpenRouterEmbeddings:
         self._embeddings = OpenAIEmbeddings(
             model=model,
             api_key=api_key,
-            base_url=f"{api_base}/v1",
+            base_url=api_base.rstrip("/"),
             timeout=60.0,
             max_retries=5,
-            http_headers={
+            default_headers={
                 "HTTP-Referer": "https://atendimento.wolfx.com.br",
                 "X-Title": "WolfX Atendimento",
             },

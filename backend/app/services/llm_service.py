@@ -57,11 +57,11 @@ class LLMService:
             self._chat = ChatOpenAI(
                 model=self.model,
                 api_key=self.api_key,
-                base_url=f"{self.api_base}/v1",
+                base_url=self.api_base,
                 timeout=120.0,
                 max_retries=MAX_RETRIES,
-                # OpenRouter specific headers
-                http_headers={
+                # OpenRouter specific headers via extra
+                default_headers={
                     "HTTP-Referer": "https://atendimento.wolfx.com.br",
                     "X-Title": "WolfX Atendimento",
                 },
@@ -111,12 +111,12 @@ class LLMService:
             chat = ChatOpenAI(
                 model=model,
                 api_key=self.api_key,
-                base_url=f"{self.api_base}/v1",
+                base_url=self.api_base,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout=120.0,
                 max_retries=MAX_RETRIES,
-                http_headers={
+                default_headers={
                     "HTTP-Referer": "https://atendimento.wolfx.com.br",
                     "X-Title": "WolfX Atendimento",
                 },

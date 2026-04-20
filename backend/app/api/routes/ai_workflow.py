@@ -46,18 +46,22 @@ def run_workflow(
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     # Build ticket_data snapshot (evita N+1 queries nos nós)
+    # Convert UUIDs to strings for JSON serialization
+    def _uuid_str(v):
+        return str(v) if v is not None else None
+
     ticket_data = {
-        "id": ticket.id,
+        "id": _uuid_str(ticket.id),
         "title": ticket.title,
         "description": ticket.description,
         "status": ticket.status,
         "priority": ticket.priority,
         "category": ticket.category,
-        "customer_id": ticket.customer_id,
+        "customer_id": _uuid_str(ticket.customer_id),
         "history": "",   # TODO: carregar histórico de comments se necessário
-        "sla_id": ticket.sla_id,
-        "sla_response_limit": ticket.sla_response_limit,
-        "sla_resolution_limit": ticket.sla_resolution_limit,
+        "sla_id": _uuid_str(ticket.sla_id),
+        "sla_response_limit": str(ticket.sla_response_limit) if ticket.sla_response_limit else None,
+        "sla_resolution_limit": str(ticket.sla_resolution_limit) if ticket.sla_resolution_limit else None,
     }
 
     # Create execution record

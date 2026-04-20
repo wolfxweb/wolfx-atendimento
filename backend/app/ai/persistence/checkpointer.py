@@ -1,76 +1,42 @@
 """
-LangGraph PostgreSQL Checkpointer.
+LangGraph Checkpointer — in-memory implementation.
 
-Uses langgraph-checkpoint with a PostgreSQL connection to persist
-workflow state between interrupts (human approval) and across restarts.
-
-Usage:
-    from app.ai.persistence.checkpointer import get_checkpointer
-    checkpointer = get_checkpointer()
+For production with multi-instance deployment, replace MemorySaver
+with PostgresSaver and manage the connection lifecycle properly.
 """
-import os
 from typing import Optional
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from langgraph.checkpoint.memory import MemorySaver
 
 
 # ── Sync checkpointer (para uso com graph.invoke()) ──────────────
 
-_postgres_url: Optional[str] = None
-_sync_checkpointer: Optional[PostgresSaver] = None
+_sync_checkpointer: Optional[MemorySaver] = None
 
 
-def _get_postgres_url() -> str:
-    global _postgres_url
-    if _postgres_url is None:
-        _postgres_url = os.getenv(
-            "DATABASE_URL",
-            "postgresql://postgres:postgres@postgres:5432/atendimento_db"
-        )
-    return _postgres_url
-
-
-def get_checkpointer() -> PostgresSaver:
+def get_checkpointer() -> MemorySaver:
     """
-    Returns a singleton PostgresSaver checkpointer.
-
-    Thread-safe for concurrent graph invocations.
-    The underlying PostgresPool handles connection pooling.
+    Returns a singleton in-memory checkpointer (MemorySaver).
+    State is lost on restart — sufficient for single-instance dev/MVP.
     """
     global _sync_checkpointer
 
     if _sync_checkpointer is None:
-        url = _get_postgres_url()
-        engine = create_engine(
-            url,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
-        )
-        # Auto-create checkpoints table via metadata
-        _sync_checkpointer = PostgresSaver.from_engine(engine)
-        _sync_checkpointer.setup()   # CREATE TABLE IF NOT EXISTS ...
+        _sync_checkpointer = MemorySaver()
 
     return _sync_checkpointer
 
 
 # ── Async checkpointer (para uso com graph.ainvoke()) ──────────
 
-_async_checkpointer: Optional[AsyncPostgresSaver] = None
+_async_checkpointer: Optional[MemorySaver] = None
 
 
-def get_async_checkpointer() -> AsyncPostgresSaver:
-    """
-    Returns a singleton async PostgresSaver for async graph invocations.
-    """
+def get_async_checkpointer() -> MemorySaver:
+    """Returns a singleton async MemorySaver."""
     global _async_checkpointer
 
     if _async_checkpointer is None:
-        url = _get_postgres_url()
-        _async_checkpointer = AsyncPostgresSaver.from_conn_str(url)
-        _async_checkpointer.setup()
+        _async_checkpointer = MemorySaver()
 
     return _async_checkpointer
 

@@ -107,12 +107,12 @@ Responde APENAS com JSON válido, sem texto extra.
         llm = ChatOpenAI(
             model=model,
             api_key=OPENROUTER_API_KEY,
-            base_url=f"{OPENROUTER_API_BASE}/v1",
+            base_url=OPENROUTER_API_BASE.rstrip("/"),
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=120.0,
             max_retries=3,
-            http_headers={
+            default_headers={
                 "HTTP-Referer": "https://atendimento.wolfx.com.br",
                 "X-Title": "WolfX Atendimento",
             },
