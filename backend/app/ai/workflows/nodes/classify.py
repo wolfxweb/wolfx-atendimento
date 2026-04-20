@@ -12,7 +12,7 @@ from typing import Any
 
 from app.database import SessionLocal
 from app.models.ai_models import AIAuditLog
-from app.services.langfuse_client import get_langfuse_callback
+from app.services.langfuse_client import trace_llm_call
 from app.ai.chains.classification import (
     get_classification_chain_with_handler,
     ClassificationOutput,
@@ -60,20 +60,9 @@ def classify_node(state: dict[str, Any]) -> dict[str, Any]:
             "history": history or "Sem histórico",
         }
 
-        # Obter callback LangFuse (pode ser None se LANGFUSE_* não configurado)
-        callback = get_langfuse_callback()
-
-        # Invocar LCEL chain
+        # Invocar LCEL chain (sem callback — tracing feito via trace_llm_call)
         t0 = datetime.utcnow()
-
-        if callback:
-            result = get_classification_chain_with_handler().invoke(
-                chain_inputs,
-                config={"callbacks": [callback]},
-            )
-        else:
-            # Sem LangFuse — invocar directamente
-            result = get_classification_chain_with_handler().invoke(chain_inputs)
+        result = get_classification_chain_with_handler().invoke(chain_inputs)
 
         latency_ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
 
@@ -83,6 +72,26 @@ def classify_node(state: dict[str, Any]) -> dict[str, Any]:
             if isinstance(result, dict)
             else result.model_dump() if hasattr(result, "model_dump") else result
         )
+
+        # Tracing LangFuse (sem langchain — via SDK manual)
+        try:
+            from app.ai.chains.classification import DEFAULT_MODEL
+            trace_llm_call(
+                operation="classify",
+                model=DEFAULT_MODEL,
+                input_text=f"{title}\n{description}",
+                output_text=str(classification_output),
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                latency_ms=latency_ms,
+                metadata={
+                    "intent": classification_output.get("intent"),
+                    "confidence": classification_output.get("confidence"),
+                },
+                execution_id=execution_id,
+                ticket_id=ticket_id,
+            )
+        except Exception as e:
+            logger.warning(f"[classify_node] LangFuse trace failed: {e}")
 
         # Audit log
         if execution_id:

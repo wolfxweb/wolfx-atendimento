@@ -60,7 +60,9 @@ def get_langfuse_callback():
             from langfuse.callback import CallbackHandler
             _langfuse_handler = CallbackHandler(client=lf)
         except Exception as e:
-            logger.warning(f"[LangFuse] Could not create callback: {e}")
+            # langchain não instalado — usa tracing manual via trace_llm_call
+            if not isinstance(e, ModuleNotFoundError):
+                logger.warning(f"[LangFuse] Could not create callback: {e}")
             _langfuse_handler = None
 
     return _langfuse_handler
@@ -87,29 +89,36 @@ def trace_llm_call(
     """
     lf = _get_langfuse()
     if lf is None:
+        logger.warning("[LangFuse] lf is None — skipping trace")
         return
 
     try:
-        # Geração de trace (equivalente a um span LLM)
+        metadata_combined = {
+            "model": model,
+            "execution_id": str(execution_id) if execution_id else None,
+            "ticket_id": str(ticket_id) if ticket_id else None,
+            "latency_ms": latency_ms,
+            **(metadata or {}),
+        }
+
+        # LangFuse v2 API: lf.generation()
+        # input/output devem ser string ou lista de mensagens
         generation = lf.generation(
             name=operation,
             model=model,
-            input=input_text[:500],          # truncar para evitar payload grande
+            input=input_text[:500],
             output=output_text[:500],
-            modelParameters={
-                "temperature": 0.3,
-            },
+            modelParameters={"temperature": 0.3},
             usage={
-                "prompt_tokens": usage.get("prompt_tokens", 0),
-                "completion_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("total_tokens", 0),
+                "prompt_tokens": usage.get("prompt_tokens", 0) or 0,
+                "completion_tokens": usage.get("completion_tokens", 0) or 0,
+                "total_tokens": usage.get("total_tokens", 0) or 0,
             },
-            metadata={
-                "execution_id": str(execution_id) if execution_id else None,
-                "ticket_id": str(ticket_id) if ticket_id else None,
-                **(metadata or {}),
-            },
+            metadata=metadata_combined,
+            level="DEFAULT",
         )
+        lf.flush()
+        logger.info(f"[LangFuse] traced {operation} → id={generation.id}")
         return generation
 
     except Exception as e:

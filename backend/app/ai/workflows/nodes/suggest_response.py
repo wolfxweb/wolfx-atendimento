@@ -12,7 +12,7 @@ from typing import Any
 
 from app.database import SessionLocal
 from app.models.ai_models import AIAuditLog
-from app.services.langfuse_client import get_langfuse_callback
+from app.services.langfuse_client import get_langfuse_callback, trace_llm_call
 from app.ai.chains.suggestion import get_suggestion_chain_with_handler
 
 
@@ -88,6 +88,26 @@ def suggest_response_node(state: dict[str, Any]) -> dict[str, Any]:
             "operational_action": result.get("operational_action"),
             "references": result.get("references", []),
         }
+
+        # Tracing LangFuse (after suggestion is built)
+        try:
+            from app.ai.chains.suggestion import DEFAULT_MODEL
+            trace_llm_call(
+                operation="suggest_response",
+                model=DEFAULT_MODEL,
+                input_text=f"title={title} desc={description}",
+                output_text=str(suggestion),
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                latency_ms=latency_ms,
+                metadata={
+                    "confidence": suggestion.get("confidence"),
+                    "has_action": suggestion.get("has_action"),
+                },
+                execution_id=execution_id,
+                ticket_id=ticket_id,
+            )
+        except Exception as e:
+            logger.warning(f"[suggest_response_node] LangFuse trace failed: {e}")
 
         # Audit log
         if execution_id:

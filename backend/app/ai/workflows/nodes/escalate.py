@@ -12,7 +12,7 @@ from typing import Any
 
 from app.database import SessionLocal
 from app.models.ai_models import AIAuditLog
-from app.services.langfuse_client import get_langfuse_callback
+from app.services.langfuse_client import get_langfuse_callback, trace_llm_call
 from app.ai.chains.escalation import get_escalation_chain_with_handler
 
 
@@ -68,6 +68,26 @@ def escalate_node(state: dict[str, Any]) -> dict[str, Any]:
             "assign_to": result.get("assign_to"),
             "priority_override": result.get("priority_override"),
         }
+
+        # Tracing LangFuse
+        try:
+            from app.ai.chains.escalation import DEFAULT_MODEL
+            trace_llm_call(
+                operation="escalate",
+                model=DEFAULT_MODEL,
+                input_text=f"priority={priority} category={category}",
+                output_text=str(decision),
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                latency_ms=latency_ms,
+                metadata={
+                    "should_escalate": decision.get("should_escalate"),
+                    "escalation_reason": decision.get("escalation_reason"),
+                },
+                execution_id=execution_id,
+                ticket_id=ticket_id,
+            )
+        except Exception as e:
+            logger.warning(f"[escalate_node] LangFuse trace failed: {e}")
 
         # Audit log
         if execution_id:
